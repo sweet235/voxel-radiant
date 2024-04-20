@@ -9,9 +9,10 @@ To run this, you will need:
 
 ## How to create a .map file
 
-Use this command:
+Use these commands:
 
 ```sh
+mkdir map-example_src.dpkdir/maps
 ./voxel-radiant.ml input.vox map-example_src.dpkdir
 ```
 
