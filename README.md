@@ -79,4 +79,4 @@ created placed with `O`. Change `tutorial.vox`:
  vO
 ```
 
-![screenshot](https://github.com/sweet235/voxel-radiant/blob/master/doc/screenshot0.jpg?raw=true)
+![screenshot](https://github.com/sweet235/voxel-radiant/blob/main/doc/screenshot0.jpg?raw=true)
