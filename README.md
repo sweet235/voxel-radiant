@@ -79,4 +79,83 @@ created placed with `O`. Change `tutorial.vox`:
  vO
 ```
 
+Load the map with
+
+```
+daemon +devmap example
+```
+
+Here is a screenshot:
+
 ![screenshot](https://github.com/sweet235/voxel-radiant/blob/main/doc/screenshot0.jpg?raw=true)
+
+Let us make the map bigger now. Change `tutorial.vox`:
+```
+    +RA+
+     ++
+     ++
+   ^^++
+   ++++
+   +++
+   ++
+   ++^^
+   ++++
+     ++
+    ^++
+   ^+++
+   ++++
+   ++ 
+   +++
+   +++^^
+   +++++
+O> ++  +
+ >     +
+ > ^+> +
+ B + + +
+ ++> +^+
+```
+
+Here, we used the characters `A` to place an armoury, and `B` to place
+a booster. The human side of the map looks like this now:
+
+![screenshot](https://github.com/sweet235/voxel-radiant/blob/main/doc/screenshot1.jpg?raw=true)
+
+This map is still two dimensional in essence. You can add vertical
+layers by separating them with the keyword `#ply`:
+
+```
+    
+     ++
+     ++
+     + 
+   +
+   +
+#ply
+    +RA+
+     ++
+     ++
+   ^^++
+   ++++
+   +++
+   ++
+   ++^^
+   ++++
+     ++
+    ^++
+   ^+++
+   ++++
+   ++ 
+   +++
+   +++^^
+   +++++
+O> ++  +
+ >     +
+ > ^+> +
+ B + + +
+ ++> +^+
+```
+
+Ladders are added automatically to aid human movement. The map looks
+like this now:
+
+![screenshot](https://github.com/sweet235/voxel-radiant/blob/main/doc/screenshot2.jpg?raw=true)
