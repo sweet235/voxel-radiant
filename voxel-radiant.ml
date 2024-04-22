@@ -284,7 +284,8 @@ let rec map_acc : ('a -> 'b list -> 'b list) -> 'b list -> 'a list -> 'b list
 let is_sky_cell : ascii_art -> int vec3 -> bool
   = fun ascii_art (_, _, ply) -> ply = Array.length ascii_art - 1
 
-let ceiling_with_lamp =
+let ceiling_with_lamp : unit -> brush list
+  = fun () ->
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let translate brush dx dy =
     translate_brush brush ((dx - !cfg_lamp_width) / 4, (dy + !cfg_lamp_width) / 4, 0) in
@@ -341,7 +342,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
           let brush = translate_brush brush (0, 0, dim_z / 2 + !cfg_wall_thickness / 2) in
           [brush]
         else
-          ceiling_with_lamp in
+          ceiling_with_lamp () in
       brushes @ result
     else result in
 
@@ -675,6 +676,7 @@ let main : string -> string -> unit
   | Ok lines ->
      let lines = eat_option_lines lines in
      let arr = parse_input lines in
+     let (_, _, dim_z) = array3_dim arr in if dim_z = 1 then cfg_ladders := false;
      let brushes = compile_ascii_art arr in
      let stream = open_out map_source_path in
      write_map brushes stream;
