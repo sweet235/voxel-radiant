@@ -184,6 +184,8 @@ offsets of 0.
 #sky_tex shared_space/sky25 1 1 0 0
 ```
 
+Change textures for floor, ceiling and sky.
+
 ```
 #ladders off
 ```
