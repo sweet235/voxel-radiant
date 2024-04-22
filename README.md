@@ -159,3 +159,33 @@ Ladders are added automatically to aid human movement. The map looks
 like this now:
 
 ![screenshot](https://github.com/sweet235/voxel-radiant/blob/main/doc/screenshot2.jpg?raw=true)
+
+## File Syntax
+
+At the start of a `.vox` file, there may be configuration lines to
+change some aspects of the generated map. These are:
+
+```
+#cell_dim 512 256 256
+```
+
+Change the size of the cells.
+
+```
+#wall_tex shared_pk02/wall04b 0.25 0.25 0 0
+```
+
+Change the wall texture. Use scaling 0.25 in both directions, and
+offsets of 0.
+
+```
+#floor_tex shared_tech/floortile1b 0.5 0.5 0 0
+#ceiling_tex shared_tech/floortile1b 0.5 0.5 0 0
+#sky_tex shared_space/sky25 1 1 0 0
+```
+
+```
+#ladders off
+```
+
+Do not create ladders.
