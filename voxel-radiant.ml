@@ -418,19 +418,22 @@ let intermission_string : int -> int -> int -> string
 let write_intermission : ascii_art -> out_channel -> unit
   = fun arr stream ->
   let (num_lines, num_cols, num_plies) = array3_dim arr in
-  for ply = 0 to num_plies - 1 do
-    for line = 0 to num_lines - 1 do
-      for col = 0 to num_cols - 1 do
-        match ascii_get arr (line, col, ply) with
-        | Some 'R' ->
-           let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
-           output_string stream (intermission_string (line * dim_x + 10) (col * dim_y + 128)
-             (ply * dim_z + 152))
-        | _ -> ()
+  let f opt =
+    let is_hit = match opt with Some needle -> fun c -> c = needle | None -> fun _ -> true in
+    for ply = 0 to num_plies - 1 do
+      for line = 0 to num_lines - 1 do
+        for col = 0 to num_cols - 1 do
+          match ascii_get arr (line, col, ply) with
+          | Some c when is_hit c ->
+             let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+             output_string stream (intermission_string (line * dim_x + 10) (col * dim_y + 128)
+                                     (ply * dim_z + 152));
+             raise Exit
+          | _ -> ()
+        done
       done
-    done
-  done
-
+    done in
+  try List.iter f [Some 'R'; None] with Exit -> ()
 
 (*
  * buildings
