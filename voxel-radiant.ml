@@ -655,59 +655,65 @@ let eat_option_lines : string list -> string list
  * putting everything together
  *)
 
-let map_name_of_dpkdir : string -> string
+let map_name_of_dpkdir : string -> (string, string) result
   = fun src_dpkdir ->
+  let len = String.length src_dpkdir in
+  let last_pos = len - if src_dpkdir.[len - 1] = '/' then 2 else 1 in
   let start_pos =
-    match String.rindex_opt src_dpkdir '/' with
+    match String.rindex_from_opt src_dpkdir last_pos '/' with
     | None -> 0
     | Some n -> n in
-  let name_with_prefix =
-    match String.index_from_opt src_dpkdir start_pos '_' with
-    | None -> failwith "invalid dpkdir name"
-    | Some n ->
-       String.sub src_dpkdir start_pos (n - start_pos) in
-  match String.sub name_with_prefix 0 4 with
-  | "map-" -> String.sub name_with_prefix 4 (String.length name_with_prefix - 4)
-  | _ -> failwith "map name must start with map-"
+  match String.index_from_opt src_dpkdir start_pos '_' with
+  | None -> Error "invalid dpkdir name"
+  | Some n ->
+     let name_with_prefix = String.sub src_dpkdir start_pos (n - start_pos) in
+     match String.sub name_with_prefix 0 4 with
+     | "map-" -> Ok (String.sub name_with_prefix 4 (String.length name_with_prefix - 4))
+     | _ -> Error "dpkdir must start with map-"
 
-let main : string -> string -> unit
+let main : string -> string -> (unit, string) result
   = fun input_path output_path ->
-  let map_name = map_name_of_dpkdir output_path in
+  let ( let* ) = Result.bind in
+  let* map_name = map_name_of_dpkdir output_path in
   let map_source_path = output_path ^ "/maps/" ^ map_name ^ ".map" in
-  match input_lines input_path with
-  | Error msg -> print_string (msg ^ "\n")
-  | Ok lines ->
-     let lines = eat_option_lines lines in
-     let arr = parse_input lines in
-     let (_, _, dim_z) = array3_dim arr in if dim_z = 1 then cfg_ladders := false;
-     let brushes = compile_ascii_art arr in
-     let stream = open_out map_source_path in
-     write_map brushes stream;
-     write_intermission arr stream;
-     write_buildings arr stream;
-     close_out stream;
-     let f (classname, down_max, up_max) =
-       let stream = open_out (output_path ^ "/maps/" ^ map_name ^ "-" ^ classname ^ ".navcon") in
-       write_navcons arr down_max up_max stream;
-       close_out stream in
-     List.iter f [
-         ("builder", max_int, 0);
-         ("builderupg", max_int, max_int);
-         ("level0", max_int, max_int);
-         ("level1", max_int, max_int);
-         ("level2", max_int, 256);
-         ("level2upg", max_int, 256);
-         ("level3", max_int, 256);
-         ("level3upg", max_int, 256);
-         ("level4", max_int, 0);
-         ("human_naked", 256, max_int);
-         ("human_bsuit", 512, max_int);
-       ]
+  let* lines = input_lines input_path in
+  let lines = eat_option_lines lines in
+  let arr = parse_input lines in
+  let (_, _, dim_z) = array3_dim arr in
+  if dim_z = 1 then cfg_ladders := false;
+  let brushes = compile_ascii_art arr in
+  let stream = open_out map_source_path in
+  write_map brushes stream;
+  write_intermission arr stream;
+  write_buildings arr stream;
+  close_out stream;
+  let f (classname, down_max, up_max) =
+    let stream = open_out (output_path ^ "/maps/" ^ map_name ^ "-" ^ classname ^ ".navcon") in
+    write_navcons arr down_max up_max stream;
+    close_out stream in
+  List.iter f [
+      ("builder", max_int, 0);
+      ("builderupg", max_int, max_int);
+      ("level0", max_int, max_int);
+      ("level1", max_int, max_int);
+      ("level2", max_int, 256);
+      ("level2upg", max_int, 256);
+      ("level3", max_int, 256);
+      ("level3upg", max_int, 256);
+      ("level4", max_int, 0);
+      ("human_naked", 256, max_int);
+      ("human_bsuit", 512, max_int);
+    ];
+  Ok ()
 
 let main_cmdline () =
-    match Sys.argv with
+  match Sys.argv with
   | [| own_name; input_path; output_path |] ->
-     main input_path output_path
+     begin
+       match main input_path output_path with
+       | Error s -> Printf.printf "Error: %s\n" s
+       | Ok () -> ()
+     end
   | arr ->
      Printf.printf "Usage:\n    %s <ascii-art-file> <map-file>\n" arr.(0)
 
