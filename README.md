@@ -49,17 +49,6 @@ file `run-q3map2.sh` for details on how to do this on Linux. If you are
 on Windows or MaxOS, the commands will only require slight adjustment
 of the paths.
 
-For technical reasons, the generated map does not pass q3map2's leak
-test. This is because it is missing the "intermission". You need to
-place a reactor on a cell for voxel-radiant to place the intermission
-there. This is done by replacing a `+` by `R`:
-
-```
-+R
- +
- ++
-```
-
 After compilation, you can load this map with the Daemon Engine and
 Unvanquished with this command:
 
@@ -68,8 +57,9 @@ daemon -set g_neverend 1 +devmap example
 ```
 
 Notice that we had to force the game to never end, as there are no
-eggs yet. There are some telenodes, as these are placed automatically
-next to the reactor. Eggs are placed with the characters `< > ^ v`, indicating
+spawns yet. The Reactor is placed with the character `R`.
+Some Telenodes are automatically placed next to it.
+Eggs are placed with the characters `< > ^ v`, indicating
 at which of the 4 walls the eggs should be placed. The Overmind is
 created placed with `O`. Change `tutorial.vox`:
 
@@ -128,6 +118,7 @@ layers by separating them with the keyword `#ply`:
      ++
      ++
      + 
+   ^
    +
    +
 #ply
