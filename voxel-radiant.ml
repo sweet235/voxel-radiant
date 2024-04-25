@@ -601,41 +601,43 @@ let write_navcons : ascii_art -> int -> int -> out_channel -> unit
  * parsing options
  *)
 
-let eat_option_lines : string list -> string list
+let ( let* ) = Result.bind
+
+let eat_option_lines : string list -> (string list, string) result
   = fun lines ->
   let tokens line =
     List.filter (fun s -> String.length s > 0) (String.split_on_char ' ' line) in
-  let die line =
-    Printf.printf "syntax error: %s\n" line;
-    exit 1 in
+  let error line =
+    Error (Printf.sprintf "syntax error in: %s" line) in
   let rec loop = function
     | line :: lines -> begin
+        let catch f = try f (); Ok () with _ -> error line in
         let parse_tex cfg = function
           | [texture; scal_x; scal_y; offs_x; offs_y] ->
-             cfg := (try Texture (texture,
-                                  (float_of_string scal_x, float_of_string scal_y),
-                                  (int_of_string offs_x, int_of_string offs_y));
-                     with _ -> die line)
-          | _ -> die line in
+             catch @@ fun () ->
+               cfg := Texture (texture,
+                               (float_of_string scal_x, float_of_string scal_y),
+                               (int_of_string offs_x, int_of_string offs_y))
+          | _ -> error line in
         match tokens line with
-        | "#sky_tex" :: rest -> parse_tex cfg_sky_tex rest; loop lines
-        | "#floor_tex" :: rest -> parse_tex cfg_floor_tex rest; loop lines
-        | "#wall_tex" :: rest -> parse_tex cfg_wall_tex rest; loop lines
-        | "#ceiling_tex" :: rest -> parse_tex cfg_ceiling_tex rest; loop lines
-        | "#lamp_tex" :: rest -> parse_tex cfg_lamp_tex rest; loop lines
+        | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
+        | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
+        | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
+        | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
+        | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
         | ["#cell_dim"; dim_x; dim_y; dim_z] ->
-           cfg_cell_dim :=
-             (try let x = int_of_string dim_x in
-                  let y = int_of_string dim_y in
-                  let z = int_of_string dim_z in
-                  assert (x mod 4 == 0);
-                  assert (y mod 4 == 0);
-                  assert (z mod 4 == 0);
-                  (x, y, z)
-              with _ -> die line);
+           let* () = catch @@ fun () ->
+             cfg_cell_dim :=
+               let x = int_of_string dim_x in
+               let y = int_of_string dim_y in
+               let z = int_of_string dim_z in
+               assert (x mod 4 == 0);
+               assert (y mod 4 == 0);
+               assert (z mod 4 == 0);
+               (x, y, z) in
            loop lines
         | ["#lamp_width"; width] ->
-           cfg_lamp_width := (try int_of_string width with _ -> die line);
+           let* () = catch @@ fun () -> cfg_lamp_width := int_of_string width in
            loop lines
         | ["#ladders"; "off"] ->
            cfg_ladders := false;
@@ -643,11 +645,11 @@ let eat_option_lines : string list -> string list
         | ["#ply"] ->
            loop lines
         | t :: ts when t.[0] == '#' ->
-           die line
+           error line
         | _ ->
-           line :: lines
+           Ok (line :: lines)
       end
-    | [] -> assert false in
+    | [] -> Error "no rooms (append some + characters to the file)" in
   loop lines
 
 
@@ -659,39 +661,40 @@ let map_name_of_dpkdir : string -> (string, string) result
   = fun src_dpkdir ->
   let len = String.length src_dpkdir in
   let last_pos = len - if src_dpkdir.[len - 1] = '/' then 2 else 1 in
-  let start_pos =
-    match String.rindex_from_opt src_dpkdir last_pos '/' with
+  let start_pos = match String.rindex_from_opt src_dpkdir last_pos '/' with
     | None -> 0
     | Some n -> n in
-  match String.index_from_opt src_dpkdir start_pos '_' with
-  | None -> Error "invalid dpkdir name"
-  | Some n ->
-     let name_with_prefix = String.sub src_dpkdir start_pos (n - start_pos) in
-     match String.sub name_with_prefix 0 4 with
-     | "map-" -> Ok (String.sub name_with_prefix 4 (String.length name_with_prefix - 4))
-     | _ -> Error "dpkdir must start with map-"
+  let* n = String.index_from_opt src_dpkdir start_pos '_'
+         |> Option.to_result ~none:"invalid dpkdir name" in
+  let name_with_prefix = String.sub src_dpkdir start_pos (n - start_pos) in
+  match String.sub name_with_prefix 0 4 with
+  | "map-" -> Ok (String.sub name_with_prefix 4 (String.length name_with_prefix - 4))
+  | _ -> Error "dpkdir must start with map-"
 
 let main : string -> string -> (unit, string) result
   = fun input_path output_path ->
-  let ( let* ) = Result.bind in
+  let open_out_result path = try Ok (open_out path) with Sys_error s -> Error s in
   let* map_name = map_name_of_dpkdir output_path in
   let map_source_path = output_path ^ "/maps/" ^ map_name ^ ".map" in
   let* lines = input_lines input_path in
-  let lines = eat_option_lines lines in
+  let* lines = eat_option_lines lines in
   let arr = parse_input lines in
   let (_, _, dim_z) = array3_dim arr in
   if dim_z = 1 then cfg_ladders := false;
   let brushes = compile_ascii_art arr in
-  let stream = open_out map_source_path in
+  let* stream = open_out_result map_source_path in
   write_map brushes stream;
   write_intermission arr stream;
   write_buildings arr stream;
   close_out stream;
-  let f (classname, down_max, up_max) =
-    let stream = open_out (output_path ^ "/maps/" ^ map_name ^ "-" ^ classname ^ ".navcon") in
-    write_navcons arr down_max up_max stream;
-    close_out stream in
-  List.iter f [
+  let rec loop = function
+    | (classname, down_max, up_max) :: rest ->
+       let* stream = open_out_result (output_path ^ "/maps/" ^ map_name ^ "-" ^ classname ^ ".navcon") in
+       write_navcons arr down_max up_max stream;
+       close_out stream;
+       loop rest
+    | [] -> Ok () in
+  loop [
       ("builder", max_int, 0);
       ("builderupg", max_int, max_int);
       ("level0", max_int, max_int);
@@ -703,15 +706,14 @@ let main : string -> string -> (unit, string) result
       ("level4", max_int, 0);
       ("human_naked", 256, max_int);
       ("human_bsuit", 512, max_int);
-    ];
-  Ok ()
+    ]
 
 let main_cmdline () =
   match Sys.argv with
   | [| own_name; input_path; output_path |] ->
      begin
        match main input_path output_path with
-       | Error s -> Printf.printf "Error: %s\n" s
+       | Error s -> Printf.printf "Error:\n  %s\n" s
        | Ok () -> ()
      end
   | arr ->
