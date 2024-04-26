@@ -540,8 +540,8 @@ let write_buildings : ascii_art -> out_channel -> unit
  * writing a navcon file
  *)
 
-let write_navcons : ascii_art -> int -> int -> out_channel -> unit
-  = fun arr down_max up_max stream ->
+let write_navcons : ascii_art -> int -> int -> bool -> out_channel -> unit
+  = fun arr down_max up_max pounces_up stream ->
   let (num_rows, num_cols, num_plies) = array3_dim arr in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let dist_from_edge_bottom = 50 in
@@ -570,7 +570,7 @@ let write_navcons : ascii_art -> int -> int -> out_channel -> unit
              && not (exists (pos +++ down)) then
             let up_allowed = ref true in
             let rec down_loop i =
-              if exists (pos +++ i *** down) then
+              if exists (pos +++ i *** down) && not pounces_up then
                 up_allowed := false;
               if ply - i < 0 then -1
               else if not (exists (pos +++ forward +++ i *** down)) then -1
@@ -590,8 +590,25 @@ let write_navcons : ascii_art -> int -> int -> out_channel -> unit
                 | true, false -> lower_end, upper_end
                 | _ -> upper_end, lower_end in
               let line = Printf.sprintf "%d %d %d %d %d %d 50 1 63 %s\n" x z y x' z' y' twoway in
-              output_string stream line
-        in List.iter f rotations
+              output_string stream line in
+        List.iter f rotations;
+        if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
+          let f mat =
+            let forward = mat ***| forward in
+            if exists pos
+               && not (exists (pos +++ down))
+               && exists (pos +++ forward)
+               && exists (pos +++ forward +++ down)
+               && exists (pos +++ forward +++ 2 *** down)
+               && exists (pos +++ 2 *** forward)
+               && exists (pos +++ 2 *** forward +++ down)
+               && not (exists (pos +++ 2 *** forward +++ 2 *** down)) then
+              let sel = forward +++ (0, 0, 1) in
+              let (x, y, z) = base +++ (top ***~ sel) in
+              let (x', y', z') = base +++ (bottom ***~ sel) +++ (forward ***~ !cfg_cell_dim) +++ (0, 0, -dim_z) in
+              let line = Printf.sprintf "%d %d %d %d %d %d 50 1 63 0\n" x' z' y' x z y in
+              output_string stream line in
+          List.iter f rotations
       done
     done
   done
@@ -688,24 +705,24 @@ let main : string -> string -> (unit, string) result
   write_buildings arr stream;
   close_out stream;
   let rec loop = function
-    | (classname, down_max, up_max) :: rest ->
+    | (classname, down_max, up_max, pounces_up) :: rest ->
        let* stream = open_out_result (output_path ^ "/maps/" ^ map_name ^ "-" ^ classname ^ ".navcon") in
-       write_navcons arr down_max up_max stream;
+       write_navcons arr down_max up_max pounces_up stream;
        close_out stream;
        loop rest
     | [] -> Ok () in
   loop [
-      ("builder", max_int, 0);
-      ("builderupg", max_int, max_int);
-      ("level0", max_int, max_int);
-      ("level1", max_int, max_int);
-      ("level2", max_int, 256);
-      ("level2upg", max_int, 256);
-      ("level3", max_int, 256);
-      ("level3upg", max_int, 256);
-      ("level4", max_int, 0);
-      ("human_naked", 256, max_int);
-      ("human_bsuit", 512, max_int);
+      ("builder", max_int, 0, false);
+      ("builderupg", max_int, max_int, false);
+      ("level0", max_int, max_int, false);
+      ("level1", max_int, max_int, false);
+      ("level2", max_int, 256, false);
+      ("level2upg", max_int, 256, false);
+      ("level3", max_int, 256, true);
+      ("level3upg", max_int, 390, true);
+      ("level4", max_int, 0, false);
+      ("human_naked", 256, max_int, false);
+      ("human_bsuit", 512, max_int, false);
     ]
 
 let main_cmdline () =
