@@ -55,9 +55,13 @@ let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5),
 let cfg_lamp_width = ref 64
 let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0))
 let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0))
+let cfg_wall_tex_ply : (int, texture) Hashtbl.t = Hashtbl.create 64
 let cfg_wall_thickness = ref 32
 let cfg_ladders = ref true
 
+let get_cfg_wall_tex : int -> texture
+  = fun ply ->
+  try Hashtbl.find cfg_wall_tex_ply ply with _ -> !cfg_wall_tex
 
 (*
  * brush operations
@@ -358,7 +362,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
         let brush = rotate_brush brush mat in
         let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
         translate_brush brush shift in
-      let tex = if !cfg_ladders && needs_ladder then !cfg_ladder_tex else !cfg_wall_tex in
+      let tex = if !cfg_ladders && needs_ladder then !cfg_ladder_tex else get_cfg_wall_tex ply in
       let result = create caulk tex caulk caulk caulk caulk 0 :: result in
       if !cfg_ladders then
         let inv = if needs_ladder then ladder else playerclip in
@@ -629,19 +633,24 @@ let eat_option_lines : string list -> (string list, string) result
   let rec loop = function
     | line :: lines -> begin
         let catch f = try f (); Ok () with _ -> error line in
-        let parse_tex cfg = function
+        let parse_tex_setter setter = function
           | [texture; scal_x; scal_y; offs_x; offs_y] ->
              catch @@ fun () ->
-               cfg := Texture (texture,
-                               (float_of_string scal_x, float_of_string scal_y),
-                               (int_of_string offs_x, int_of_string offs_y))
+               setter @@ Texture (texture,
+                                  (float_of_string scal_x, float_of_string scal_y),
+                                  (int_of_string offs_x, int_of_string offs_y))
           | _ -> error line in
+        let parse_tex cfg = parse_tex_setter (fun tex -> cfg := tex) in
         match tokens line with
         | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
         | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
         | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
         | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
         | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
+        | "#wall_tex_ply" :: ply :: rest ->
+           let* p = try Ok (int_of_string ply) with _ -> error line in
+           let* () = parse_tex_setter (fun tex -> Hashtbl.add cfg_wall_tex_ply p tex) rest in
+           loop lines
         | ["#cell_dim"; dim_x; dim_y; dim_z] ->
            let* () = catch @@ fun () ->
              cfg_cell_dim :=
