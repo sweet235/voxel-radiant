@@ -56,8 +56,10 @@ let cfg_lamp_width = ref 64
 let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0))
 let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0))
 let cfg_wall_tex_ply : (int, texture) Hashtbl.t = Hashtbl.create 64
+let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
 let cfg_wall_thickness = ref 32
 let cfg_ladders = ref true
+let cfg_ladder_width = ref 96
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -288,22 +290,31 @@ let rec map_acc : ('a -> 'b list -> 'b list) -> 'b list -> 'a list -> 'b list
 let is_sky_cell : ascii_art -> int vec3 -> bool
   = fun ascii_art (_, _, ply) -> ply = Array.length ascii_art - 1
 
-let ceiling_with_lamp : unit -> brush list
-  = fun () ->
+let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
+  = fun ascii_art pos ->
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let translate brush dx dy =
     translate_brush brush ((dx - !cfg_lamp_width) / 4, (dy + !cfg_lamp_width) / 4, 0) in
-  let create dx dy =
-    let brush =
-      create_cuboid ((dx + !cfg_lamp_width) / 2, (dy - !cfg_lamp_width) / 2, !cfg_wall_thickness)
-        caulk caulk caulk caulk caulk !cfg_ceiling_tex true in
-    translate brush dx dy in
-  let brush0 = create dim_x dim_y in
-  let brush1 = create dim_y dim_x in
+  let create mat forward right =
+    let (dx, dy, _) = mat ***| !cfg_cell_dim in
+    let dx, dy = abs dx, abs dy in
+    let forward = mat ***| forward in
+    let right = mat ***| right in
+    let len, len_shift = if not @@ is_cell ascii_art (pos +++ forward) then
+                       (dy - !cfg_lamp_width) / 2, 0
+                     else
+                       (dy - !cfg_lamp_width) / 2 - !cfg_wall_thickness, -2 * !cfg_wall_thickness in
+    let width, width_shift = if not @@ is_cell ascii_art (pos +++ right) then
+                               (dx + !cfg_lamp_width) / 2, 0
+                             else
+                               (dx + !cfg_lamp_width) / 2 - !cfg_wall_thickness, -2 * !cfg_wall_thickness in
+    let brush = create_cuboid (width, len, !cfg_wall_thickness)
+                  caulk caulk caulk caulk caulk !cfg_ceiling_tex true in
+    let brush = translate brush (dx + width_shift) (dy + len_shift) in
+    rotate_brush brush mat in
   let lamp_brush = create_cuboid (!cfg_lamp_width, !cfg_lamp_width, !cfg_wall_thickness)
                      caulk caulk caulk caulk caulk !cfg_lamp_tex true in
-  let brushes = [lamp_brush; brush0; rotate_brush brush1 rotz90;
-                 rotate_brush brush0 rotz180; rotate_brush brush1 rotzm90] in
+  let brushes = lamp_brush :: List.map (fun m -> create m (0, 1, 1) (1, 0, 1)) rotations in
   translate_brushes brushes (0, 0, dim_z / 2 + !cfg_wall_thickness / 2)
 
 let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
@@ -322,17 +333,61 @@ let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
     else needs_ladder_down (i + 1) in
   needs_ladder_up 1 && needs_ladder_down 1
 
+let create_wall_with_ladder
+  = fun width has_floor wall ->
+  let (_, _, dim_z) = !cfg_cell_dim in
+  let strip_width = (width - !cfg_ladder_width) / 2 in
+  let right = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
+                caulk wall caulk wall !cfg_floor_tex !cfg_ceiling_tex true in
+  let left = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
+               caulk wall wall caulk !cfg_floor_tex !cfg_ceiling_tex true in
+  let offs = (strip_width + !cfg_ladder_width) / 2 in
+  let right = translate_brush right (0, offs, 0) in
+  let left = translate_brush left (0, -offs, 0) in
+  let center = create_cuboid (!cfg_wall_thickness, !cfg_ladder_width, dim_z)
+                 caulk wall caulk caulk !cfg_floor_tex !cfg_ceiling_tex true in
+  let center = translate_brush center (-(!cfg_wall_thickness / 2), 0, 0) in
+  let ladder = create_cuboid (!cfg_wall_thickness / 2, !cfg_ladder_width, dim_z)
+                 ladder ladder ladder ladder ladder ladder true in
+  let ladder = translate_brush ladder (!cfg_wall_thickness / 4, 0, 0) in
+  let result = [ladder; left; center; right] in
+  let result =
+    if not has_floor then result
+    else
+      let floor = create_cuboid (!cfg_wall_thickness, !cfg_ladder_width, !cfg_wall_thickness)
+                caulk caulk caulk caulk !cfg_floor_tex caulk true in
+      let floor = translate_brush floor (0, 0, -(dim_z + !cfg_wall_thickness) / 2) in
+      floor :: result in
+  let tex = Texture ("shared_pk02/generic01b", (1.0, 1.0), (0, 0)) in
+  let rec loop h acc =
+    if h > dim_z then acc
+    else
+      let br = create_cuboid (4, !cfg_ladder_width, 4)
+                 tex tex tex tex tex tex false in
+      loop (h + 32) (translate_brush br ((!cfg_wall_thickness / 4), 0, h - dim_z / 2) :: acc) in
+  loop 16 result
+
 let create_cell : ascii_art -> int vec3 -> brush list
   = fun ascii_art ((row, col, ply) as pos) ->
   let result = [] in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+  let exists pos = is_cell ascii_art pos in
+  let wt = !cfg_wall_thickness in
 
   (* floor if needed *)
   let result = 
     if not @@ is_cell ascii_art (pos +++ (0, 0, -1)) then
-      let brush = create_cuboid (dim_x, dim_y, !cfg_wall_thickness)
+      let f dim v v' =
+        match exists (pos +++ v), exists (pos +++ v') with
+        | false, false -> dim, 0
+        | false, true -> dim - wt, wt / 2
+        | true, false -> dim - wt, -wt / 2
+        | true, true -> dim - 2 * wt, 0 in
+      let width, width_shift = f dim_x (1, 0, -1) (-1, 0, -1) in
+      let len, len_shift = f dim_y (0, 1, -1) (0, -1, -1) in
+      let brush = create_cuboid (width, len, !cfg_wall_thickness)
                     caulk caulk caulk caulk !cfg_floor_tex caulk true in
-      let brush = translate_brush brush (0, 0, -dim_z / 2 - !cfg_wall_thickness / 2) in
+      let brush = translate_brush brush (width_shift, len_shift, -dim_z / 2 - !cfg_wall_thickness / 2) in
       brush :: result
     else result in
 
@@ -346,7 +401,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
           let brush = translate_brush brush (0, 0, dim_z / 2 + !cfg_wall_thickness / 2) in
           [brush]
         else
-          ceiling_with_lamp () in
+          ceiling_with_lamp ascii_art pos in
       brushes @ result
     else result in
 
@@ -355,19 +410,21 @@ let create_cell : ascii_art -> int vec3 -> brush list
     let forward = mat ***| (-1, 0, 0) in
     if not @@ is_cell ascii_art (pos +++ forward) then
       let needs_ladder = wall_has_ladder ascii_art pos forward in
+      let (dx, dy, _) = mat ***| !cfg_cell_dim in
       let create t0 t1 t2 t3 t4 t5 delta =
-        let (dx, dy, _) = mat ***| !cfg_cell_dim in
-        let brush = create_cuboid (!cfg_wall_thickness, abs dy, dim_z)
-                      t0 t1 t2 t3 t4 t5 true in
-        let brush = rotate_brush brush mat in
+        let brushes = if not needs_ladder then
+                        [create_cuboid (!cfg_wall_thickness, abs dy, dim_z)
+                           t0 t1 t2 t3 t4 t5 true]
+                      else
+                        let needs_floor = not @@ exists (pos +++ (0, 0, -1))
+                                          && not @@ exists (pos +++ mat ***| (-1, 0, -1)) in
+                        create_wall_with_ladder (abs dy) needs_floor !cfg_wall_tex_ladder in
+        let brushes = rotate_brushes brushes mat in
         let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
-        translate_brush brush shift in
-      let tex = if !cfg_ladders && needs_ladder then !cfg_ladder_tex else get_cfg_wall_tex ply in
-      let result = create caulk tex caulk caulk caulk caulk 0 :: result in
-      if !cfg_ladders then
-        let inv = if needs_ladder then ladder else playerclip in
-        create inv inv inv inv inv inv 1 :: result
-      else result
+        translate_brushes brushes shift in
+      let tex = get_cfg_wall_tex ply in
+      let result = create caulk tex caulk caulk !cfg_floor_tex !cfg_ceiling_tex 0 @ result in
+      result
     else result in
   let result = map_acc one_side result rotations in
 
@@ -645,6 +702,7 @@ let eat_option_lines : string list -> (string list, string) result
         | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
         | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
         | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
+        | "#wall_tex_ladder" :: rest -> let* () = parse_tex cfg_wall_tex_ladder rest in loop lines
         | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
         | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
         | "#wall_tex_ply" :: ply :: rest ->
