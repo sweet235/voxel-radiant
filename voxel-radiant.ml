@@ -60,6 +60,7 @@ let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
 let cfg_wall_thickness = ref 32
 let cfg_ladders = ref true
 let cfg_ladder_width = ref 96
+let cfg_single_sky = ref false
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -397,10 +398,12 @@ let create_cell : ascii_art -> int vec3 -> brush list
     if not @@ is_cell ascii_art (pos +++ (0, 0, 1)) then
       let brushes =
         if is_sky_cell ascii_art pos then
-          let brush = create_cuboid (dim_x, dim_y, !cfg_wall_thickness)
-                        caulk caulk caulk caulk caulk !cfg_sky_tex true
-                      |> translate_brush (0, 0, dim_z / 2 + !cfg_wall_thickness / 2) in
-          [brush]
+          if not !cfg_single_sky then
+            let brush = create_cuboid (dim_x, dim_y, !cfg_wall_thickness)
+                          caulk caulk caulk caulk caulk !cfg_sky_tex true
+                        |> translate_brush (0, 0, dim_z / 2 + !cfg_wall_thickness / 2) in
+            [brush]
+          else []
         else
           ceiling_with_lamp ascii_art pos in
       brushes @ result
@@ -430,6 +433,14 @@ let create_cell : ascii_art -> int vec3 -> brush list
   map_acc one_side rotations result
   (* move the brushes to their place on the grid *)
   |> translate_brushes (row * dim_x + dim_x / 2, col * dim_y + dim_y / 2, ply * dim_z + dim_z / 2)
+
+let create_single_sky : ascii_art -> brush
+  = fun ascii_art ->
+  let (rows, cols, plies) = array3_dim ascii_art in
+  let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+  let (x, y, z) = rows * dim_x, cols * dim_y, !cfg_wall_thickness in
+  create_cuboid (x, y, z) caulk caulk caulk caulk caulk !cfg_sky_tex true
+  |> translate_brush (x / 2, y / 2, plies * dim_z + !cfg_wall_thickness / 2)
 
 
 (*
@@ -723,8 +734,14 @@ let eat_option_lines : string list -> (string list, string) result
         | ["#lamp_width"; width] ->
            let* () = catch @@ fun () -> cfg_lamp_width := int_of_string width in
            loop lines
+        | ["#ladder_width"; width] ->
+           let* () = catch @@ fun () -> cfg_ladder_width := int_of_string width in
+           loop lines
         | ["#ladders"; "off"] ->
            cfg_ladders := false;
+           loop lines
+        | ["#single_sky"] ->
+           cfg_single_sky := true;
            loop lines
         | ["#ply"] ->
            loop lines
@@ -766,6 +783,7 @@ let main : string -> string -> (unit, string) result
   let (_, _, dim_z) = array3_dim arr in
   if dim_z = 1 then cfg_ladders := false;
   let brushes = compile_ascii_art arr in
+  let brushes = if !cfg_single_sky then create_single_sky arr :: brushes else brushes in
   let* stream = open_out_result map_source_path in
   write_map brushes stream;
   write_intermission arr stream;
