@@ -56,6 +56,7 @@ let cfg_lamp_width = ref 64
 let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0))
 let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0))
 let cfg_wall_tex_ply : (int, texture) Hashtbl.t = Hashtbl.create 64
+let cfg_wall_tex_random : texture array option ref = ref None
 let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
 let cfg_wall_thickness = ref 32
 let cfg_ladders = ref true
@@ -64,7 +65,12 @@ let cfg_single_sky = ref false
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
-  try Hashtbl.find cfg_wall_tex_ply ply with _ -> !cfg_wall_tex
+  match !cfg_wall_tex_random with
+  | None ->
+     begin try Hashtbl.find cfg_wall_tex_ply ply with _ -> !cfg_wall_tex end
+  | Some array ->
+     let len = Array.length array in
+     array.(Random.int len)
 
 (*
  * brush operations
@@ -720,6 +726,15 @@ let eat_option_lines : string list -> (string list, string) result
            let* p = try Ok (int_of_string ply) with _ -> error line in
            let* () = parse_tex_setter (fun tex -> Hashtbl.add cfg_wall_tex_ply p tex) rest in
            loop lines
+        | "#wall_tex_random" :: rest ->
+           let* () = parse_tex_setter
+                     (fun tex ->
+                       let ls = match !cfg_wall_tex_random with
+                         | None -> []
+                         | Some a -> Array.to_list a in
+                       let new_a = Array.of_list (tex :: ls) in
+                       cfg_wall_tex_random := Some new_a) rest in
+           loop lines
         | ["#cell_dim"; dim_x; dim_y; dim_z] ->
            let* () = catch @@ fun () ->
              cfg_cell_dim :=
@@ -811,6 +826,7 @@ let main : string -> string -> (unit, string) result
     ]
 
 let main_cmdline () =
+  Random.self_init ();
   match Sys.argv with
   | [| own_name; input_path; output_path |] ->
      begin
