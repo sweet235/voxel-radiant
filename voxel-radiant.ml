@@ -98,35 +98,35 @@ let string_of_brush : brush -> string
        (string_of_surf s4)
        (string_of_surf s5)
 
-let translate_surf : surf -> int vec3 -> surf
-  = fun (Surf (v0, v1, v2, tex, str)) v ->
+let translate_surf : int vec3 -> surf -> surf
+  = fun v (Surf (v0, v1, v2, tex, str)) ->
   Surf (v0 +++ v, v1 +++ v, v2 +++ v, tex, str)
 
-let rotate_surf  : surf -> int mat3 -> surf
-  = fun (Surf (v0, v1, v2, tex, str)) mat ->
+let rotate_surf  : int mat3 -> surf -> surf
+  = fun mat (Surf (v0, v1, v2, tex, str)) ->
   Surf (mat ***| v0, mat ***| v1, mat ***| v2, tex, str)
 
-let translate_brush : brush -> int vec3 -> brush
-  = fun brush v ->
-  let f s = translate_surf s v in
+let translate_brush : int vec3 -> brush -> brush
+  = fun v brush ->
+  let f = translate_surf v in
   match brush with
   | Cuboid (s0, s1, s2, s3, s4, s5) ->
      Cuboid (f s0, f s1, f s2, f s3, f s4, f s5)
 
-let translate_brushes : brush list -> int vec3 -> brush list
-  = fun brushes v ->
-  List.map (fun x -> translate_brush x v) brushes
+let translate_brushes : int vec3 -> brush list -> brush list
+  = fun v brushes ->
+  List.map (translate_brush v) brushes
 
-let rotate_brush : brush -> int mat3 -> brush
-  = fun brush mat ->
-  let f s = rotate_surf s mat in
+let rotate_brush : int mat3 -> brush -> brush
+  = fun mat brush ->
+  let f = rotate_surf mat in
   match brush with
   | Cuboid (s0, s1, s2, s3, s4, s5) ->
      Cuboid (f s0, f s1, f s2, f s3, f s4, f s5)
 
-let rotate_brushes : brush list -> int mat3 -> brush list
-  = fun brushes mat ->
-  List.map (fun x -> rotate_brush x mat) brushes
+let rotate_brushes : int mat3 -> brush list -> brush list
+  = fun mat brushes ->
+  List.map (rotate_brush mat) brushes
 
 (* create a cobuid, centered at the origin
    requires the dimensions to be even numbers, to center exactly *)
@@ -143,7 +143,7 @@ let create_cuboid : int vec3 -> texture -> texture -> texture -> texture -> text
   let right = Surf ((x, 0, z), (x, y, z), (x, 0, 0), tright, structure) in
   let front = Surf ((0, y, 0), (x, y, 0), (0, y, z), tfront, structure) in
   let back = Surf ((x, 0, z), (x, 0, 0), (0, 0, z), tback, structure) in
-  translate_brush (Cuboid (bottom, top, left, right, front, back)) ((-1) *** (x, y, z) /// 2)
+  translate_brush ((-1) *** (x, y, z) /// 2) (Cuboid (bottom, top, left, right, front, back))
 
 
 (*
@@ -282,10 +282,10 @@ let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0))
 let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0))
 let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0))
 
-let rec map_acc : ('a -> 'b list -> 'b list) -> 'b list -> 'a list -> 'b list
-  = fun f acc ls -> match ls with
+let rec map_acc : ('a -> 'b list -> 'b list) -> 'a list -> 'b list -> 'b list
+  = fun f ls acc -> match ls with
   | [] -> acc
-  | x :: xs -> map_acc f (f x acc) xs
+  | x :: xs -> map_acc f xs (f x acc)
 
 let is_sky_cell : ascii_art -> int vec3 -> bool
   = fun ascii_art (_, _, ply) -> ply = Array.length ascii_art - 1
@@ -294,7 +294,7 @@ let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
   = fun ascii_art pos ->
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let translate brush dx dy =
-    translate_brush brush ((dx - !cfg_lamp_width) / 4, (dy + !cfg_lamp_width) / 4, 0) in
+    translate_brush ((dx - !cfg_lamp_width) / 4, (dy + !cfg_lamp_width) / 4, 0) brush in
   let create mat forward right =
     let (dx, dy, _) = mat ***| !cfg_cell_dim in
     let dx, dy = abs dx, abs dy in
@@ -311,11 +311,11 @@ let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
     let brush = create_cuboid (width, len, !cfg_wall_thickness)
                   caulk caulk caulk caulk caulk !cfg_ceiling_tex true in
     let brush = translate brush (dx + width_shift) (dy + len_shift) in
-    rotate_brush brush mat in
+    rotate_brush mat brush in
   let lamp_brush = create_cuboid (!cfg_lamp_width, !cfg_lamp_width, !cfg_wall_thickness)
                      caulk caulk caulk caulk caulk !cfg_lamp_tex true in
-  let brushes = lamp_brush :: List.map (fun m -> create m (0, 1, 1) (1, 0, 1)) rotations in
-  translate_brushes brushes (0, 0, dim_z / 2 + !cfg_wall_thickness / 2)
+  lamp_brush :: List.map (fun m -> create m (0, 1, 1) (1, 0, 1)) rotations
+  |> translate_brushes (0, 0, dim_z / 2 + !cfg_wall_thickness / 2)
 
 let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
   = fun ascii_art ((row, col, ply) as pos) forward ->
@@ -337,34 +337,35 @@ let create_wall_with_ladder
   = fun width has_floor wall ->
   let (_, _, dim_z) = !cfg_cell_dim in
   let strip_width = (width - !cfg_ladder_width) / 2 in
-  let right = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
-                caulk wall caulk wall !cfg_floor_tex !cfg_ceiling_tex true in
-  let left = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
-               caulk wall wall caulk !cfg_floor_tex !cfg_ceiling_tex true in
   let offs = (strip_width + !cfg_ladder_width) / 2 in
-  let right = translate_brush right (0, offs, 0) in
-  let left = translate_brush left (0, -offs, 0) in
+  let right = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
+                caulk wall caulk wall !cfg_floor_tex !cfg_ceiling_tex true
+              |> translate_brush (0, offs, 0) in
+  let left = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
+               caulk wall wall caulk !cfg_floor_tex !cfg_ceiling_tex true
+             |> translate_brush (0, -offs, 0) in
   let center = create_cuboid (!cfg_wall_thickness, !cfg_ladder_width, dim_z)
-                 caulk wall caulk caulk !cfg_floor_tex !cfg_ceiling_tex true in
-  let center = translate_brush center (-(!cfg_wall_thickness / 2), 0, 0) in
+                 caulk wall caulk caulk !cfg_floor_tex !cfg_ceiling_tex true
+             |> translate_brush (-(!cfg_wall_thickness / 2), 0, 0) in
   let ladder = create_cuboid (!cfg_wall_thickness / 2, !cfg_ladder_width, dim_z)
-                 ladder ladder ladder ladder ladder ladder true in
-  let ladder = translate_brush ladder (!cfg_wall_thickness / 4, 0, 0) in
+                 ladder ladder ladder ladder ladder ladder true
+             |> translate_brush (!cfg_wall_thickness / 4, 0, 0) in
   let result = [ladder; left; center; right] in
   let result =
     if not has_floor then result
     else
       let floor = create_cuboid (!cfg_wall_thickness, !cfg_ladder_width, !cfg_wall_thickness)
-                caulk caulk caulk caulk !cfg_floor_tex caulk true in
-      let floor = translate_brush floor (0, 0, -(dim_z + !cfg_wall_thickness) / 2) in
+                    caulk caulk caulk caulk !cfg_floor_tex caulk true
+                  |> translate_brush (0, 0, -(dim_z + !cfg_wall_thickness) / 2) in
       floor :: result in
   let tex = Texture ("shared_pk02/generic01b", (1.0, 1.0), (0, 0)) in
   let rec loop h acc =
     if h > dim_z then acc
     else
       let br = create_cuboid (4, !cfg_ladder_width, 4)
-                 tex tex tex tex tex tex false in
-      loop (h + 32) (translate_brush br ((!cfg_wall_thickness / 4), 0, h - dim_z / 2) :: acc) in
+                 tex tex tex tex tex tex false
+               |> translate_brush ((!cfg_wall_thickness / 4), 0, h - dim_z / 2) in
+      loop (h + 32) (br :: acc) in
   loop 16 result
 
 let create_cell : ascii_art -> int vec3 -> brush list
@@ -386,8 +387,8 @@ let create_cell : ascii_art -> int vec3 -> brush list
       let width, width_shift = f dim_x (1, 0, -1) (-1, 0, -1) in
       let len, len_shift = f dim_y (0, 1, -1) (0, -1, -1) in
       let brush = create_cuboid (width, len, !cfg_wall_thickness)
-                    caulk caulk caulk caulk !cfg_floor_tex caulk true in
-      let brush = translate_brush brush (width_shift, len_shift, -dim_z / 2 - !cfg_wall_thickness / 2) in
+                    caulk caulk caulk caulk !cfg_floor_tex caulk true
+                  |> translate_brush (width_shift, len_shift, -dim_z / 2 - !cfg_wall_thickness / 2) in
       brush :: result
     else result in
 
@@ -397,8 +398,8 @@ let create_cell : ascii_art -> int vec3 -> brush list
       let brushes =
         if is_sky_cell ascii_art pos then
           let brush = create_cuboid (dim_x, dim_y, !cfg_wall_thickness)
-                        caulk caulk caulk caulk caulk !cfg_sky_tex true in
-          let brush = translate_brush brush (0, 0, dim_z / 2 + !cfg_wall_thickness / 2) in
+                        caulk caulk caulk caulk caulk !cfg_sky_tex true
+                      |> translate_brush (0, 0, dim_z / 2 + !cfg_wall_thickness / 2) in
           [brush]
         else
           ceiling_with_lamp ascii_art pos in
@@ -419,17 +420,16 @@ let create_cell : ascii_art -> int vec3 -> brush list
                         let needs_floor = not @@ exists (pos +++ (0, 0, -1))
                                           && not @@ exists (pos +++ mat ***| (-1, 0, -1)) in
                         create_wall_with_ladder (abs dy) needs_floor !cfg_wall_tex_ladder in
-        let brushes = rotate_brushes brushes mat in
+        let brushes = rotate_brushes mat brushes in
         let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
-        translate_brushes brushes shift in
+        translate_brushes shift brushes in
       let tex = get_cfg_wall_tex ply in
       let result = create caulk tex caulk caulk !cfg_floor_tex !cfg_ceiling_tex 0 @ result in
       result
     else result in
-  let result = map_acc one_side result rotations in
-
+  map_acc one_side rotations result
   (* move the brushes to their place on the grid *)
-  translate_brushes result (row * dim_x + dim_x / 2, col * dim_y + dim_y / 2, ply * dim_z + dim_z / 2)
+  |> translate_brushes (row * dim_x + dim_x / 2, col * dim_y + dim_y / 2, ply * dim_z + dim_z / 2)
 
 
 (*
