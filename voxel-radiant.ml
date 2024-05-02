@@ -38,7 +38,7 @@ let rotations = [ident; rotz90; rotz180; rotzm90]
 
 type scaling = float vec2
 type shift = int vec2
-type texture = Texture of (string * scaling * shift)
+type texture = Texture of (string * scaling * shift * float)
 type surf = Surf of int vec3 * int vec3 * int vec3 * texture * bool
 type brush = Cuboid of surf * surf * surf * surf * surf * surf
 
@@ -47,14 +47,14 @@ type brush = Cuboid of surf * surf * surf * surf * surf * surf
  * global options
  *)
 
-let cfg_ceiling_tex = ref @@ Texture ("shared_tech/floortile1a", (0.125, 0.125), (0, 0))
+let cfg_ceiling_tex = ref @@ Texture ("shared_tech/floortile1a", (0.125, 0.125), (0, 0), 0.0)
 let cfg_cell_dim = ref (256, 256, 256)
-let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0))
-let cfg_ladder_tex = ref @@ Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0))
-let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64))
+let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
+let cfg_ladder_tex = ref @@ Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0), 0.0)
+let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
 let cfg_lamp_width = ref 64
-let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0))
-let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0))
+let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0), 0.0)
+let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
 let cfg_wall_tex_ply : (int, texture) Hashtbl.t = Hashtbl.create 64
 let cfg_wall_tex_random : texture array option ref = ref None
 let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
@@ -83,15 +83,16 @@ let string_of_int_vec3 : int vec3 -> string
 
 let string_of_surf : surf -> string
   = function
-  | Surf (v0, v1, v2, Texture (name, (scal0, scal1), (shift0, shift1)), structure) ->
+  | Surf (v0, v1, v2, Texture (name, (scal0, scal1), (shift0, shift1), rot), structure) ->
      let flag = if structure then "0" else "134217728" in
-     Printf.sprintf "%s %s %s %s %s %s 0 %s %s %s %s 0"
+     Printf.sprintf "%s %s %s %s %s %s %s %s %s %s %s 0"
        (string_of_int_vec3 v0)
        (string_of_int_vec3 v1)
        (string_of_int_vec3 v2)
        name
        (string_of_int shift0)
        (string_of_int shift1)
+       (string_of_float rot)
        (string_of_float scal0)
        (string_of_float scal1)
        flag flag
@@ -287,9 +288,9 @@ let parse_input : string list -> ascii_art
  * creating a cell
  *)
 
-let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0))
-let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0))
-let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0))
+let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0), 0.0)
+let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
+let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0), 0.0)
 
 let rec map_acc : ('a -> 'b list -> 'b list) -> 'a list -> 'b list -> 'b list
   = fun f ls acc -> match ls with
@@ -367,7 +368,7 @@ let create_wall_with_ladder
                     caulk caulk caulk caulk !cfg_floor_tex caulk true
                   |> translate_brush (0, 0, -(dim_z + !cfg_wall_thickness) / 2) in
       floor :: result in
-  let tex = Texture ("shared_pk02/generic01b", (1.0, 1.0), (0, 0)) in
+  let tex = Texture ("shared_pk02/generic01b", (1.0, 1.0), (0, 0), 0.0) in
   let rec loop h acc =
     if h > dim_z then acc
     else
@@ -713,12 +714,20 @@ let eat_option_lines : string list -> (string list, string) result
   let rec loop = function
     | line :: lines -> begin
         let catch f = try f (); Ok () with _ -> error line in
-        let parse_tex_setter setter = function
-          | [texture; scal_x; scal_y; offs_x; offs_y] ->
-             catch @@ fun () ->
+        let parse_tex_setter setter rest =
+          let f texture scal_x scal_y offs_x offs_y rot =
+            catch @@ fun () ->
                setter @@ Texture (texture,
                                   (float_of_string scal_x, float_of_string scal_y),
-                                  (int_of_string offs_x, int_of_string offs_y))
+                                  (int_of_string offs_x, int_of_string offs_y),
+                                  float_of_string rot) in
+          match rest with
+          | [texture; scal_x; scal_y] ->
+             f texture scal_x scal_y "0" "0" "0"
+          | [texture; scal_x; scal_y; offs_x; offs_y] ->
+             f texture scal_x scal_y offs_x offs_y "0"
+          | [texture; scal_x; scal_y; offs_x; offs_y; rot] ->
+             f texture scal_x scal_y offs_x offs_y rot
           | _ -> error line in
         let parse_tex cfg = parse_tex_setter (fun tex -> cfg := tex) in
         let parse_int cfg str =
