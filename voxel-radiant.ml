@@ -62,6 +62,8 @@ let cfg_wall_thickness = ref 32
 let cfg_ladders = ref true
 let cfg_ladder_width = ref 96
 let cfg_single_sky = ref false
+let cfg_eggs_num = ref 3
+let cfg_eggs_dist = ref 60
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -542,28 +544,32 @@ let rotate_building : building -> int mat3 -> building
 let rotate_buildings : building list -> int mat3 -> building list
   = fun bs mat -> List.map (fun b -> rotate_building b mat) bs
 
-let eggs_origin =
-  let e = 60 in
-  [ Building ((0, -e, 0), "alien_spawn")
-  ; Building ((0, 0, 0), "alien_spawn")
-  ; Building ((0, e, 0), "alien_spawn") ]
+let create_eggs
+  = fun num dist ->
+  let rec loop acc = function
+    | -1 -> acc
+    | n -> loop (Building ((0, n * dist, 0), "alien_spawn") :: acc) (n - 1) in
+  let span = (num - 1) * dist in
+  translate_buildings (loop [] (num - 1)) (0, -span / 2, 0)
 
 let dispatch_on_char : ascii_art -> int -> int -> int -> building list
   = fun arr line col ply ->
+  let eggs_origin = create_eggs !cfg_eggs_num !cfg_eggs_dist in
   let d = 25 in
+  let (dim_x, dim_y, _) = !cfg_cell_dim in
   match arr.(ply).(line).(col) with
-  | 'v' -> translate_buildings eggs_origin (256 - d, 128, 0)
-  | '^' -> translate_buildings eggs_origin (d, 128, 0)
+  | 'v' -> translate_buildings eggs_origin (dim_x - d, dim_y / 2, 0)
+  | '^' -> translate_buildings eggs_origin (d, dim_y / 2, 0)
   | '>' ->
      let es = rotate_buildings eggs_origin rotz90 in
-     translate_buildings es (128, 256 - d, 0)
+     translate_buildings es (dim_x / 2, dim_y - d, 0)
   | '<' ->
      let es = rotate_buildings eggs_origin rotz90 in
-     translate_buildings es (128, d, 0)
+     translate_buildings es (dim_x / 2, d, 0)
   | 'O' ->
-     [Building ((128, 128, 0), "alien_overmind")]
+     [Building ((dim_x / 2, dim_y / 2, 0), "alien_overmind")]
   | 'B' ->
-     [Building ((128, 128, 0), "alien_booster")]
+     [Building ((dim_x / 2, dim_y / 2, 0), "alien_booster")]
   | 'R' ->
      [Building ((64, 128, 0), "human_reactor");
       Building ((148, 128, 0), "human_drill");
@@ -715,6 +721,8 @@ let eat_option_lines : string list -> (string list, string) result
                                   (int_of_string offs_x, int_of_string offs_y))
           | _ -> error line in
         let parse_tex cfg = parse_tex_setter (fun tex -> cfg := tex) in
+        let parse_int cfg str =
+          try cfg := int_of_string str; Ok () with _ -> error line in
         match tokens line with
         | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
         | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
@@ -752,6 +760,10 @@ let eat_option_lines : string list -> (string list, string) result
         | ["#ladder_width"; width] ->
            let* () = catch @@ fun () -> cfg_ladder_width := int_of_string width in
            loop lines
+        | ["#eggs_num"; n] ->
+           let* () = parse_int cfg_eggs_num n in loop lines
+        | ["#eggs_dist"; n] ->
+           let* () = parse_int cfg_eggs_dist n in loop lines
         | ["#ladders"; "off"] ->
            cfg_ladders := false;
            loop lines
