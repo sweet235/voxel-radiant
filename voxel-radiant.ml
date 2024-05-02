@@ -64,6 +64,9 @@ let cfg_ladder_width = ref 96
 let cfg_single_sky = ref false
 let cfg_eggs_num = ref 3
 let cfg_eggs_dist = ref 60
+let cfg_double_floor_depth = ref 32
+let cfg_double_floor_width = ref 96
+let cfg_double_floor_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -291,6 +294,7 @@ let parse_input : string list -> ascii_art
 let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0), 0.0)
 let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
 let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0), 0.0)
+let glass = Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
 
 let rec map_acc : ('a -> 'b list -> 'b list) -> 'a list -> 'b list -> 'b list
   = fun f ls acc -> match ls with
@@ -378,12 +382,41 @@ let create_wall_with_ladder
       loop (h + 32) (br :: acc) in
   loop 16 result
 
+let create_double_floor
+  = fun () ->
+  let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+  assert (dim_x = dim_y);
+  let glass_brush = create_cuboid (!cfg_double_floor_width, !cfg_double_floor_width, 8)
+                      caulk caulk caulk caulk glass caulk true
+                    |> translate_brush (0, 0, -dim_z / 2 - 4) in
+  let strip_width = (dim_x - !cfg_double_floor_width) / 2 in
+  let side_one = create_cuboid (strip_width, dim_x - strip_width, !cfg_double_floor_depth)
+                   !cfg_double_floor_tex caulk caulk caulk !cfg_double_floor_tex caulk true
+                 |> translate_brush (dim_x / 2 - strip_width / 2,
+                                     strip_width / 2,
+                                     -(dim_z + !cfg_double_floor_depth) / 2) in
+  glass_brush :: List.map (fun m -> rotate_brush m side_one) rotations
+
+let create_glass_walls
+  = fun () ->
+  let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+  assert (dim_x = dim_y);
+  let thickness = 4 in
+  let side_one = create_cuboid (dim_x, thickness, dim_z)
+                   caulk caulk glass caulk caulk caulk false
+                 |> translate_brush (0, dim_y / 2 - thickness / 2, 0) in
+  List.map (fun m -> rotate_brush m side_one) rotations
+
 let create_cell : ascii_art -> int vec3 -> brush list
   = fun ascii_art ((row, col, ply) as pos) ->
   let result = [] in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let exists pos = is_cell ascii_art pos in
   let wt = !cfg_wall_thickness in
+
+  let result = match ascii_get ascii_art pos with
+    | Some 'a' -> create_glass_walls () @ result
+    | _ -> result in
 
   (* floor if needed *)
   let result = 
@@ -399,7 +432,11 @@ let create_cell : ascii_art -> int vec3 -> brush list
       let brush = create_cuboid (width, len, !cfg_wall_thickness)
                     caulk caulk caulk caulk !cfg_floor_tex caulk true
                   |> translate_brush (width_shift, len_shift, -dim_z / 2 - !cfg_wall_thickness / 2) in
-      brush :: result
+      match ascii_get ascii_art pos with
+      | Some 'm' ->
+         let brush = translate_brush (0, 0, -(!cfg_double_floor_depth)) brush in
+         (brush :: create_double_floor ()) @ result
+      | _ -> brush :: result
     else result in
 
   (* ceiling if needed *)
@@ -571,7 +608,7 @@ let dispatch_on_char : ascii_art -> int -> int -> int -> building list
      [Building ((dim_x / 2, dim_y / 2, 0), "alien_overmind")]
   | 'B' ->
      [Building ((dim_x / 2, dim_y / 2, 0), "alien_booster")]
-  | 'R' ->
+  | 'R' when dim_x >= 256 && dim_y >= 256 ->
      [Building ((64, 128, 0), "human_reactor");
       Building ((148, 128, 0), "human_drill");
       Building ((64, 40, 0), "human_spawn");
@@ -583,7 +620,9 @@ let dispatch_on_char : ascii_art -> int -> int -> int -> building list
       Building ((192 + 32, 128 + 32, 0), "human_mgturret");
       Building ((192 + 32, 192 + 32, 0), "human_mgturret")
      ]
-  | 'A' ->
+  | 'R' ->
+     [Building ((dim_x / 2, dim_y / 2, 0), "human_reactor")]
+  | 'A' when dim_x >= 256 && dim_y >= 256 ->
      [Building ((50, 128, 0), "human_armoury");
       Building ((50, 50, 0), "human_medistat");
       Building ((50, 256 - 50, 0), "human_medistat");
@@ -594,6 +633,24 @@ let dispatch_on_char : ascii_art -> int -> int -> int -> building list
       Building ((192 + 32, 64 + 32, 0), "human_mgturret");
       Building ((192 + 32, 128 + 32, 0), "human_mgturret");
       Building ((192 + 32, 192 + 32, 0), "human_mgturret")
+     ]
+  | 'A' ->
+     [Building ((dim_x / 2, dim_y / 2, 0), "human_armoury")]
+  | 'M' ->
+     [Building ((dim_x / 2, dim_y / 2, 0), "human_medistat")]
+  | 'N' ->
+     [Building ((dim_x / 2, dim_y / 2, 0), "human_spawn")]
+  | 'D' ->
+     [Building ((dim_x / 2, dim_y / 2, 0), "human_drill")]
+  | 'T' ->
+     [Building ((dim_x / 2, dim_y / 2 - 32, 0), "human_mgturret");
+      Building ((dim_x / 2, dim_y / 2 + 32, 0), "human_mgturret")
+     ]
+  | 'a' ->
+     [Building ((dim_x / 2, dim_y / 2, 0), "human_armoury")]
+  | 'm' ->
+     [Building ((dim_x / 2, dim_y / 2, -16 - 32), "human_medistat");
+      Building ((dim_x / 2, dim_y / 2, -24 - 32), "human_medistat")
      ]
   | _ -> []
 
@@ -625,8 +682,8 @@ let write_buildings : ascii_art -> out_channel -> unit
  * writing a navcon file
  *)
 
-let write_navcons : ascii_art -> int -> int -> bool -> out_channel -> unit
-  = fun arr down_max up_max pounces_up stream ->
+let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> unit
+  = fun arr down_max up_max pounces_up uses_arm stream ->
   let (num_rows, num_cols, num_plies) = array3_dim arr in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let dist_from_edge_bottom = 50 in
@@ -678,22 +735,33 @@ let write_navcons : ascii_art -> int -> int -> bool -> out_channel -> unit
               output_string stream line in
         List.iter f rotations;
         if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
+          begin
+            let f mat =
+              let forward = mat ***| forward in
+              if exists pos
+                 && not (exists (pos +++ down))
+                 && exists (pos +++ forward)
+                 && exists (pos +++ forward +++ down)
+                 && exists (pos +++ forward +++ 2 *** down)
+                 && exists (pos +++ 2 *** forward)
+                 && exists (pos +++ 2 *** forward +++ down)
+                 && not (exists (pos +++ 2 *** forward +++ 2 *** down)) then
+                let sel = forward +++ (0, 0, 1) in
+                let (x, y, z) = base +++ (top ***~ sel) in
+                let (x', y', z') = base +++ (bottom ***~ sel) +++ (forward ***~ !cfg_cell_dim) +++ (0, 0, -dim_z) in
+                let line = Printf.sprintf "%d %d %d %d %d %d 50 1 63 0\n" x' z' y' x z y in
+                output_string stream line in
+            List.iter f rotations;
+          end;
+        if uses_arm && ascii_get arr pos = Some 'a' then
           let f mat =
             let forward = mat ***| forward in
-            if exists pos
-               && not (exists (pos +++ down))
-               && exists (pos +++ forward)
-               && exists (pos +++ forward +++ down)
-               && exists (pos +++ forward +++ 2 *** down)
-               && exists (pos +++ 2 *** forward)
-               && exists (pos +++ 2 *** forward +++ down)
-               && not (exists (pos +++ 2 *** forward +++ 2 *** down)) then
-              let sel = forward +++ (0, 0, 1) in
-              let (x, y, z) = base +++ (top ***~ sel) in
-              let (x', y', z') = base +++ (bottom ***~ sel) +++ (forward ***~ !cfg_cell_dim) +++ (0, 0, -dim_z) in
-              let line = Printf.sprintf "%d %d %d %d %d %d 50 1 63 0\n" x' z' y' x z y in
+            if exists (pos +++ forward) && not (exists (pos +++ forward +++ down)) then
+              let (x, y, z) = base +++ (forward ***~ (dim_x / 2 - 20, dim_y / 2 - 20, 0)) in
+              let (x', y', z') = (pos +++ forward) ***~ (dim_x, dim_y, dim_z) +++ (dim_x / 2, dim_y / 2, 0) in
+              let line = Printf.sprintf "%d %d %d %d %d %d 15 1 63 0\n" x' z' y' x z y in
               output_string stream line in
-          List.iter f rotations
+          List.iter f rotations;
       done
     done
   done
@@ -735,6 +803,7 @@ let eat_option_lines : string list -> (string list, string) result
         match tokens line with
         | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
         | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
+        | "#double_floor_tex" :: rest -> let* () = parse_tex cfg_double_floor_tex rest in loop lines
         | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
         | "#wall_tex_ladder" :: rest -> let* () = parse_tex cfg_wall_tex_ladder rest in loop lines
         | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
@@ -826,24 +895,24 @@ let main : string -> string -> (unit, string) result
   write_buildings arr stream;
   close_out stream;
   let rec loop = function
-    | (classname, down_max, up_max, pounces_up) :: rest ->
+    | (classname, down_max, up_max, pounces_up, uses_arm) :: rest ->
        let* stream = open_out_result (output_path ^ "/maps/" ^ map_name ^ "-" ^ classname ^ ".navcon") in
-       write_navcons arr down_max up_max pounces_up stream;
+       write_navcons arr down_max up_max pounces_up uses_arm stream;
        close_out stream;
        loop rest
     | [] -> Ok () in
   loop [
-      ("builder", max_int, 0, false);
-      ("builderupg", max_int, max_int, false);
-      ("level0", max_int, max_int, false);
-      ("level1", max_int, max_int, false);
-      ("level2", max_int, 256, false);
-      ("level2upg", max_int, 256, false);
-      ("level3", max_int, 256, true);
-      ("level3upg", max_int, 390, true);
-      ("level4", max_int, 0, false);
-      ("human_naked", 256, max_int, false);
-      ("human_bsuit", 512, max_int, false);
+      ("builder", max_int, 0, false, false);
+      ("builderupg", max_int, max_int, false, false);
+      ("level0", max_int, max_int, false, false);
+      ("level1", max_int, max_int, false, false);
+      ("level2", max_int, 256, false, false);
+      ("level2upg", max_int, 256, false, false);
+      ("level3", max_int, 256, true, false);
+      ("level3upg", max_int, 390, true, false);
+      ("level4", max_int, 0, false, false);
+      ("human_naked", 256, max_int, false, true);
+      ("human_bsuit", 512, max_int, false, true);
     ]
 
 let main_cmdline () =
