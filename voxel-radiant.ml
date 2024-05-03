@@ -67,6 +67,7 @@ let cfg_eggs_dist = ref 60
 let cfg_double_floor_depth = ref 32
 let cfg_double_floor_width = ref 96
 let cfg_double_floor_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
+let cfg_navcon_radius = ref 50
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -686,8 +687,8 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
   = fun arr down_max up_max pounces_up uses_arm stream ->
   let (num_rows, num_cols, num_plies) = array3_dim arr in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
-  let dist_from_edge_bottom = 50 in
-  let dist_from_edge_top = 50 in
+  let dist_from_edge_bottom = !cfg_navcon_radius in
+  let dist_from_edge_top = !cfg_navcon_radius in
   let exists pos = is_cell arr pos in
   output_string stream "navcon 3\n";
   for ply = 0 to num_plies - 1 do
@@ -701,7 +702,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
                    10) in
         let bottom = (dim_x / 2 + dist_from_edge_bottom,
                       dim_y / 2 + dist_from_edge_bottom,
-                      0) in
+                      10) in
         let base = (row * dim_x + dim_x / 2,
                     col * dim_y + dim_y / 2,
                     ply * dim_z) in
@@ -731,7 +732,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
                 match goes_up, goes_down with
                 | true, false -> lower_end, upper_end
                 | _ -> upper_end, lower_end in
-              let line = Printf.sprintf "%d %d %d %d %d %d 50 1 63 %s\n" x z y x' z' y' twoway in
+              let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 %s\n" x z y x' z' y' !cfg_navcon_radius twoway in
               output_string stream line in
         List.iter f rotations;
         if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
@@ -749,7 +750,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
                 let sel = forward +++ (0, 0, 1) in
                 let (x, y, z) = base +++ (top ***~ sel) in
                 let (x', y', z') = base +++ (bottom ***~ sel) +++ (forward ***~ !cfg_cell_dim) +++ (0, 0, -dim_z) in
-                let line = Printf.sprintf "%d %d %d %d %d %d 50 1 63 0\n" x' z' y' x z y in
+                let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 0\n" x' z' y' x z y !cfg_navcon_radius in
                 output_string stream line in
             List.iter f rotations;
           end;
@@ -842,6 +843,8 @@ let eat_option_lines : string list -> (string list, string) result
            let* () = parse_int cfg_eggs_num n in loop lines
         | ["#eggs_dist"; n] ->
            let* () = parse_int cfg_eggs_dist n in loop lines
+        | ["#navcon_radius"; n] ->
+           let* () = parse_int cfg_navcon_radius n in loop lines                                        
         | ["#ladders"; "off"] ->
            cfg_ladders := false;
            loop lines
