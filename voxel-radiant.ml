@@ -29,6 +29,11 @@ let ident : int mat3 = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 let rotz90 : int mat3 = ((0, -1, 0), (1, 0, 0), (0, 0, 1))
 let rotzm90 : int mat3 = ((0, 1, 0), (-1, 0, 0), (0, 0, 1))
 let rotz180 : int mat3 = ((-1, 0, 0), (0, -1, 0), (0, 0, 1))
+let rotx90 : int mat3 = ((1, 0, 0), (0, 0, -1), (0, 1, 0))
+let rotx180 : int mat3 = ((1, 0, 0), (0, -1, 0), (0, 0, -1))
+let rotm90 : int mat3 = ((1, 0, 0), (0, 0, 1), (0, -1, 0))
+let roty90 : int mat3 = ((0, 0, 1), (0, 1, 0), (-1, 0, 0))
+let rotym90 : int mat3 = ((0, 0, -1), (0, 1, 0), (1, 0, 0))
 let rotations = [ident; rotz90; rotz180; rotzm90]
 
 
@@ -62,6 +67,7 @@ let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
 let cfg_wall_thickness = ref 32
 let cfg_ladders = ref true
 let cfg_ladder_width = ref 96
+let cfg_ladder_spacing = ref 32
 let cfg_single_sky = ref false
 let cfg_eggs_num = ref 3
 let cfg_eggs_dist = ref 60
@@ -171,6 +177,16 @@ let create_cuboid : int vec3 -> texture -> texture -> texture -> texture -> text
   let back = Surf ((x, 0, z), (x, 0, 0), (0, 0, z), tback, structure) in
   translate_brush ((-1) *** (x, y, z) /// 2) (Cuboid (bottom, top, left, right, front, back))
 
+let create_prism : int vec3 -> texture -> brush
+  = fun (x, y, z) tex ->
+  let xy2 = (x + y) / 2 in
+  let side0 = Surf ((0, 0, z), (-y, 0, z), (0, 0, 0), tex, false) in
+  let side1 = Surf ((0, 0, z), (0, 0, 0), (0, -y, xy2), tex, false) in
+  let side2 = Surf ((-x, -y, 0), (0, -y, 0), (-x, 0, 0), tex, false) in
+  let side3 = Surf ((-x, -y, 0), (-x, 0, 0), (-x, -y, z), tex, false) in
+  let side4 = Surf ((-xy2, -y, 0), (-xy2, 0, z), (-y * 2 / 3, -y, 0), tex, false) in
+  Prism (side0, side1, side2, side3, side4)
+  |> translate_brush (x / 2, y / 2, -z / 2)
 
 (*
  * representing the input file
@@ -360,40 +376,33 @@ let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
     else needs_ladder_down (i + 1) in
   needs_ladder_up 1 && needs_ladder_down 1
 
-let create_wall_with_ladder
-  = fun width has_floor wall ->
+let ladder_thickness = 4
+let invisible_ladder_thickness = 6
+
+let create_ladder
+  = fun width ->
   let (_, _, dim_z) = !cfg_cell_dim in
-  let strip_width = (width - !cfg_ladder_width) / 2 in
-  let offs = (strip_width + !cfg_ladder_width) / 2 in
-  let right = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
-                caulk wall caulk wall !cfg_floor_tex !cfg_ceiling_tex true
-              |> translate_brush (0, offs, 0) in
-  let left = create_cuboid (!cfg_wall_thickness, strip_width, dim_z)
-               caulk wall wall caulk !cfg_floor_tex !cfg_ceiling_tex true
-             |> translate_brush (0, -offs, 0) in
-  let center = create_cuboid (!cfg_wall_thickness, !cfg_ladder_width, dim_z)
-                 caulk wall caulk caulk !cfg_floor_tex !cfg_ceiling_tex true
-             |> translate_brush (-(!cfg_wall_thickness / 2), 0, 0) in
-  let ladder = create_cuboid (!cfg_wall_thickness / 2, !cfg_ladder_width, dim_z)
-                 ladder ladder ladder ladder ladder ladder true
-             |> translate_brush (!cfg_wall_thickness / 4, 0, 0) in
-  let result = [ladder; left; center; right] in
-  let result =
-    if not has_floor then result
-    else
-      let floor = create_cuboid (!cfg_wall_thickness, !cfg_ladder_width, !cfg_wall_thickness)
-                    caulk caulk caulk caulk !cfg_floor_tex caulk true
-                  |> translate_brush (0, 0, -(dim_z + !cfg_wall_thickness) / 2) in
-      floor :: result in
   let tex = Texture ("shared_pk02/generic01b", (1.0, 1.0), (0, 0), 0.0) in
+  let thick = ladder_thickness in
+  let inv_thick = invisible_ladder_thickness in
+  let prism_width = 32 in
   let rec loop h acc =
     if h > dim_z then acc
     else
-      let br = create_cuboid (4, !cfg_ladder_width, 4)
+      let br = create_cuboid (thick, !cfg_ladder_width, thick)
                  tex tex tex tex tex tex false
-               |> translate_brush ((!cfg_wall_thickness / 4), 0, h - dim_z / 2) in
-      loop (h + 32) (br :: acc) in
-  loop 16 result
+               |> translate_brush ((!cfg_wall_thickness + thick) / 2, 0, h - dim_z / 2) in
+      loop (h + !cfg_ladder_spacing) (br :: acc) in
+  let result = loop (!cfg_ladder_spacing / 2) [] in
+  let ladder_cuboid = create_cuboid (inv_thick, !cfg_ladder_width, dim_z)
+                        ladder ladder ladder ladder ladder ladder true
+                      |> translate_brush ((!cfg_wall_thickness + inv_thick) / 2, 0, 0) in
+  let ladder_prism = create_prism (dim_z, prism_width, inv_thick) ladder
+                     |> rotate_brush roty90
+                     |> translate_brush ((!cfg_wall_thickness + inv_thick) / 2,
+                                         -(!cfg_ladder_width + prism_width) / 2, 0) in
+  let ladder_prism_0 = rotate_brush rotx180 ladder_prism in
+  ladder_prism :: ladder_prism_0 :: ladder_cuboid :: result
 
 let create_double_floor
   = fun () ->
@@ -475,13 +484,9 @@ let create_cell : ascii_art -> int vec3 -> brush list
       let needs_ladder = wall_has_ladder ascii_art pos forward in
       let (dx, dy, _) = mat ***| !cfg_cell_dim in
       let create t0 t1 t2 t3 t4 t5 delta =
-        let brushes = if not needs_ladder then
-                        [create_cuboid (!cfg_wall_thickness, abs dy, dim_z)
-                           t0 t1 t2 t3 t4 t5 true]
-                      else
-                        let needs_floor = not @@ exists (pos +++ (0, 0, -1))
-                                          && not @@ exists (pos +++ mat ***| (-1, 0, -1)) in
-                        create_wall_with_ladder (abs dy) needs_floor !cfg_wall_tex_ladder in
+        let wall_brush = create_cuboid (!cfg_wall_thickness, abs dy, dim_z)
+                           t0 t1 t2 t3 t4 t5 true in
+        let brushes = wall_brush :: if needs_ladder then create_ladder !cfg_ladder_width else [] in
         let brushes = rotate_brushes mat brushes in
         let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
         translate_brushes shift brushes in
@@ -603,20 +608,22 @@ let create_eggs
   let span = (num - 1) * dist in
   translate_buildings (loop [] (num - 1)) (0, -span / 2, 0)
 
-let dispatch_on_char : ascii_art -> int -> int -> int -> building list
-  = fun arr line col ply ->
-  let eggs_origin = create_eggs !cfg_eggs_num !cfg_eggs_dist in
-  let d = 25 in
+let dispatch_on_char : ascii_art -> int vec3 -> building list
+  = fun arr (line, col, ply) ->
   let (dim_x, dim_y, _) = !cfg_cell_dim in
+  let create_eggs mat =
+    let d = 25 in
+    let bs = create_eggs !cfg_eggs_num !cfg_eggs_dist in
+    let bs = rotate_buildings bs mat in
+    let has_ladder = wall_has_ladder arr (line, col, ply) (mat ***| (-1, 0, 0)) in
+    let shift = mat ***| (dim_x / 2 - d - (if has_ladder then invisible_ladder_thickness else 0), 0, 0) in
+    translate_buildings bs (shift +++ (dim_x / 2, dim_y / 2, 0))
+  in
   match arr.(ply).(line).(col) with
-  | 'v' -> translate_buildings eggs_origin (dim_x - d, dim_y / 2, 0)
-  | '^' -> translate_buildings eggs_origin (d, dim_y / 2, 0)
-  | '>' ->
-     let es = rotate_buildings eggs_origin rotz90 in
-     translate_buildings es (dim_x / 2, dim_y - d, 0)
-  | '<' ->
-     let es = rotate_buildings eggs_origin rotz90 in
-     translate_buildings es (dim_x / 2, d, 0)
+  | 'v' -> create_eggs ident
+  | '^' -> create_eggs rotz180
+  | '>' -> create_eggs rotz90
+  | '<' -> create_eggs rotzm90
   | 'O' ->
      [Building ((dim_x / 2, dim_y / 2, 0), "alien_overmind")]
   | 'B' ->
@@ -676,7 +683,7 @@ let create_buildings : ascii_art -> building list
     for line = 0 to num_lines - 1 do
       for col = 0 to num_cols - 1 do
         if is_cell arr (line, col, ply) then begin
-            let bs = dispatch_on_char arr line col ply in
+            let bs = dispatch_on_char arr (line, col, ply) in
             let bs = translate_buildings bs (line * dim_x, col * dim_y, 32 + ply * dim_z) in
             buildings := bs :: !buildings
           end
@@ -851,6 +858,8 @@ let eat_option_lines : string list -> (string list, string) result
         | ["#ladder_width"; width] ->
            let* () = catch @@ fun () -> cfg_ladder_width := int_of_string width in
            loop lines
+        | ["#ladder_spacing"; spacing] ->
+           let* () = parse_int cfg_ladder_spacing spacing in loop lines
         | ["#eggs_num"; n] ->
            let* () = parse_int cfg_eggs_num n in loop lines
         | ["#eggs_dist"; n] ->
