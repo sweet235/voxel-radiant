@@ -41,6 +41,7 @@ type shift = int vec2
 type texture = Texture of (string * scaling * shift * float)
 type surf = Surf of int vec3 * int vec3 * int vec3 * texture * bool
 type brush = Cuboid of surf * surf * surf * surf * surf * surf
+           | Prism of surf * surf * surf * surf * surf
 
 
 (*
@@ -111,6 +112,13 @@ let string_of_brush : brush -> string
        (string_of_surf s3)
        (string_of_surf s4)
        (string_of_surf s5)
+  | Prism (s0, s1, s2, s3, s4) ->
+     Printf.sprintf "{\n%s\n%s\n%s\n%s\n%s\n}\n"
+       (string_of_surf s0)
+       (string_of_surf s1)
+       (string_of_surf s2)
+       (string_of_surf s3)
+       (string_of_surf s4)
 
 let translate_surf : int vec3 -> surf -> surf
   = fun v (Surf (v0, v1, v2, tex, str)) ->
@@ -126,6 +134,8 @@ let translate_brush : int vec3 -> brush -> brush
   match brush with
   | Cuboid (s0, s1, s2, s3, s4, s5) ->
      Cuboid (f s0, f s1, f s2, f s3, f s4, f s5)
+  | Prism (s0, s1, s2, s3, s4) ->
+     Prism (f s0, f s1, f s2, f s3, f s4)
 
 let translate_brushes : int vec3 -> brush list -> brush list
   = fun v brushes ->
@@ -137,6 +147,8 @@ let rotate_brush : int mat3 -> brush -> brush
   match brush with
   | Cuboid (s0, s1, s2, s3, s4, s5) ->
      Cuboid (f s0, f s1, f s2, f s3, f s4, f s5)
+  | Prism (s0, s1, s2, s3, s4) ->
+     Prism (f s0, f s1, f s2, f s3, f s4)
 
 let rotate_brushes : int mat3 -> brush list -> brush list
   = fun mat brushes ->
