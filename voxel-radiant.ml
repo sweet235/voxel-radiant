@@ -429,6 +429,17 @@ let create_glass_walls
                  |> translate_brush (0, dim_y / 2 - thickness / 2, 0) in
   List.map (fun m -> rotate_brush m side_one) rotations
 
+let create_vent
+  = fun mat ->
+  let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+  assert (dim_x = dim_y);
+  let wall = !cfg_wall_tex in
+  let create v = create_cuboid v wall wall wall wall wall wall true in
+  let brush = create (dim_x, dim_y / 4, dim_z) in
+  let brush0 = translate_brush (0, dim_y / 4 + dim_y / 8, 0) brush in
+  let brush1 = translate_brush (0, -dim_y / 4 - dim_y / 8, 0) brush in
+  rotate_brushes mat [brush0; brush1]
+
 let create_cell : ascii_art -> int vec3 -> brush list
   = fun ascii_art ((row, col, ply) as pos) ->
   let result = [] in
@@ -438,6 +449,8 @@ let create_cell : ascii_art -> int vec3 -> brush list
 
   let result = match ascii_get ascii_art pos with
     | Some 'a' -> create_glass_walls () @ result
+    | Some '|' -> create_vent ident
+    | Some '-' -> create_vent rotz90
     | _ -> result in
 
   (* floor if needed *)
@@ -562,8 +575,8 @@ let write_intermission : ascii_art -> out_channel -> unit
           match ascii_get arr (line, col, ply) with
           | Some c when is_hit c ->
              let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
-             output_string stream (intermission_string (line * dim_x + 10) (col * dim_y + 128)
-                                     (ply * dim_z + 152));
+             output_string stream (intermission_string (line * dim_x + dim_x / 2) (col * dim_y + dim_y / 2)
+                                     (ply * dim_z + dim_z / 2));
              raise Exit
           | _ -> ()
         done
