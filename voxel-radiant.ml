@@ -310,11 +310,38 @@ let crop_ascii_art : ascii_art -> ascii_art
   done;
   cropped
 
+let set_vertical_cells : ascii_art -> unit
+  = fun ascii ->
+  let needs_128 = function
+    | '>' | '^' | '<' | 'v' | 'R' | 'A' | 'M' | 'T' | 'N' | 'O' | 'B' | 'm' -> true
+    | _ -> false in
+  let (rows, cols, plies) = array3_dim ascii in
+  let (_, _, dim_z) = !cfg_cell_dim in
+  for ply = 0 to plies - 1 do
+    for row = 0 to rows - 1 do
+      for col = 0 to cols - 1 do
+        let set_above c lim_z =
+          let rec loop p =
+            if ply + p >= plies then ()
+            else if (p + 1) * dim_z > lim_z then ()
+            else if ascii.(ply + p).(row).(col) = '@' then ()
+            else let () = ascii.(ply + p).(row).(col) <- c in loop (p + 1) in
+          loop 1 in
+        match ascii_get ascii (row, col, ply) with
+        | Some '@' -> set_above '+' max_int
+        | Some 'a' -> set_above 'g' 128
+        | Some c when needs_128 c -> set_above '+' 128
+        | _ -> ()
+      done
+    done
+  done
+
 let parse_input : string list -> ascii_art
   = fun ls ->
   let ply_lists = split_lines_into_plies ls in
-  crop_ascii_art @@ parse_input_lists ply_lists
-
+  let result = crop_ascii_art @@ parse_input_lists ply_lists in
+  set_vertical_cells result;
+  result
 
 (*
  * creating a cell
@@ -448,7 +475,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
   let wt = !cfg_wall_thickness in
 
   let result = match ascii_get ascii_art pos with
-    | Some 'a' -> create_glass_walls () @ result
+    | Some 'a' | Some 'g' -> create_glass_walls () @ result
     | Some '|' -> create_vent ident
     | Some '-' -> create_vent rotz90
     | _ -> result in
