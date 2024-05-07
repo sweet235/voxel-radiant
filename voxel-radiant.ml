@@ -846,93 +846,75 @@ let eat_option_lines : string list -> (string list, string) result
     List.filter (fun s -> String.length s > 0) (String.split_on_char ' ' line) in
   let error line =
     Error (Printf.sprintf "syntax error in: %s" line) in
+  let parse_line line lines loop =
+    let catch f = try f (); Ok () with _ -> error line in
+    let parse_tex_setter setter rest =
+      let f texture scal_x scal_y offs_x offs_y rot =
+        catch @@ fun () ->
+                 setter @@ Texture (texture,
+                                    (float_of_string scal_x, float_of_string scal_y),
+                                    (int_of_string offs_x, int_of_string offs_y),
+                                    float_of_string rot) in
+      match rest with
+      | [texture; scal_x; scal_y] ->
+         f texture scal_x scal_y "0" "0" "0"
+      | [texture; scal_x; scal_y; offs_x; offs_y] ->
+         f texture scal_x scal_y offs_x offs_y "0"
+      | [texture; scal_x; scal_y; offs_x; offs_y; rot] ->
+         f texture scal_x scal_y offs_x offs_y rot
+      | _ -> error line in
+    let parse_tex cfg = parse_tex_setter (fun tex -> cfg := tex) in
+    let parse_int cfg str =
+      try cfg := int_of_string str; Ok () with _ -> error line in
+    match tokens line with
+    | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
+    | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
+    | "#double_floor_tex" :: rest -> let* () = parse_tex cfg_double_floor_tex rest in loop lines
+    | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
+    | "#wall_tex_ladder" :: rest -> let* () = parse_tex cfg_wall_tex_ladder rest in loop lines
+    | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
+    | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
+    | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
+    | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
+    | "#wall_tex_ply" :: ply :: rest ->
+       let* p = try Ok (int_of_string ply) with _ -> error line in
+       let* () = parse_tex_setter (fun tex -> Hashtbl.add cfg_wall_tex_ply p tex) rest in
+       loop lines
+    | "#wall_tex_random" :: rest ->
+       let* () = parse_tex_setter
+                   (fun tex ->
+                     let ls = match !cfg_wall_tex_random with
+                       | None -> []
+                       | Some a -> Array.to_list a in
+                     let new_a = Array.of_list (tex :: ls) in
+                     cfg_wall_tex_random := Some new_a) rest in
+       loop lines
+    | ["#cell_dim"; dim_x; dim_y; dim_z] ->
+       let* () = catch @@ fun () ->
+                          cfg_cell_dim :=
+                            let x = int_of_string dim_x in
+                            let y = int_of_string dim_y in
+                            let z = int_of_string dim_z in
+                            assert (x mod 4 == 0);
+                            assert (y mod 4 == 0);
+                            assert (z mod 4 == 0);
+                            (x, y, z) in
+       loop lines
+    | ["#lamp_width"; n] -> let* () = parse_int cfg_lamp_width n in loop lines
+    | ["#ladder_width"; n] -> let* () = parse_int cfg_ladder_width n in loop lines
+    | ["#ladder_spacing"; n] -> let* () = parse_int cfg_ladder_spacing n in loop lines
+    | ["#eggs_num"; n] -> let* () = parse_int cfg_eggs_num n in loop lines
+    | ["#eggs_dist"; n] -> let* () = parse_int cfg_eggs_dist n in loop lines
+    | ["#navcon_radius"; n] -> let* () = parse_int cfg_navcon_radius n in loop lines
+    | ["#ladders"; "off"] -> let () = cfg_ladders := false in loop lines
+    | ["#single_sky"] -> let () = cfg_single_sky := true in loop lines
+    | "#extend_to_sky" :: strs -> cfg_extend_to_sky := List.map (fun s -> s.[0]) strs; loop lines
+    | ["#ply"] -> loop lines
+    | t :: _ when string_starts_with t "##" -> loop lines
+    | t :: ts when t.[0] = '#' -> error line
+    | _ -> Ok (line :: lines) in
   let rec loop = function
-    | line :: lines -> begin
-        let catch f = try f (); Ok () with _ -> error line in
-        let parse_tex_setter setter rest =
-          let f texture scal_x scal_y offs_x offs_y rot =
-            catch @@ fun () ->
-               setter @@ Texture (texture,
-                                  (float_of_string scal_x, float_of_string scal_y),
-                                  (int_of_string offs_x, int_of_string offs_y),
-                                  float_of_string rot) in
-          match rest with
-          | [texture; scal_x; scal_y] ->
-             f texture scal_x scal_y "0" "0" "0"
-          | [texture; scal_x; scal_y; offs_x; offs_y] ->
-             f texture scal_x scal_y offs_x offs_y "0"
-          | [texture; scal_x; scal_y; offs_x; offs_y; rot] ->
-             f texture scal_x scal_y offs_x offs_y rot
-          | _ -> error line in
-        let parse_tex cfg = parse_tex_setter (fun tex -> cfg := tex) in
-        let parse_int cfg str =
-          try cfg := int_of_string str; Ok () with _ -> error line in
-        match tokens line with
-        | "#sky_tex" :: rest -> let* () = parse_tex cfg_sky_tex rest in loop lines
-        | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
-        | "#double_floor_tex" :: rest -> let* () = parse_tex cfg_double_floor_tex rest in loop lines
-        | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
-        | "#wall_tex_ladder" :: rest -> let* () = parse_tex cfg_wall_tex_ladder rest in loop lines
-        | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
-        | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
-        | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
-        | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
-        | "#wall_tex_ply" :: ply :: rest ->
-           let* p = try Ok (int_of_string ply) with _ -> error line in
-           let* () = parse_tex_setter (fun tex -> Hashtbl.add cfg_wall_tex_ply p tex) rest in
-           loop lines
-        | "#wall_tex_random" :: rest ->
-           let* () = parse_tex_setter
-                     (fun tex ->
-                       let ls = match !cfg_wall_tex_random with
-                         | None -> []
-                         | Some a -> Array.to_list a in
-                       let new_a = Array.of_list (tex :: ls) in
-                       cfg_wall_tex_random := Some new_a) rest in
-           loop lines
-        | ["#cell_dim"; dim_x; dim_y; dim_z] ->
-           let* () = catch @@ fun () ->
-             cfg_cell_dim :=
-               let x = int_of_string dim_x in
-               let y = int_of_string dim_y in
-               let z = int_of_string dim_z in
-               assert (x mod 4 == 0);
-               assert (y mod 4 == 0);
-               assert (z mod 4 == 0);
-               (x, y, z) in
-           loop lines
-        | ["#lamp_width"; width] ->
-           let* () = catch @@ fun () -> cfg_lamp_width := int_of_string width in
-           loop lines
-        | ["#ladder_width"; width] ->
-           let* () = catch @@ fun () -> cfg_ladder_width := int_of_string width in
-           loop lines
-        | ["#ladder_spacing"; spacing] ->
-           let* () = parse_int cfg_ladder_spacing spacing in loop lines
-        | ["#eggs_num"; n] ->
-           let* () = parse_int cfg_eggs_num n in loop lines
-        | ["#eggs_dist"; n] ->
-           let* () = parse_int cfg_eggs_dist n in loop lines
-        | ["#navcon_radius"; n] ->
-           let* () = parse_int cfg_navcon_radius n in loop lines                                        
-        | ["#ladders"; "off"] ->
-           cfg_ladders := false;
-           loop lines
-        | ["#single_sky"] ->
-           cfg_single_sky := true;
-           loop lines
-        | "#extend_to_sky" :: strs ->
-           cfg_extend_to_sky := List.map (fun s -> s.[0]) strs;
-           loop lines
-        | ["#ply"] ->
-           loop lines
-        | t :: _ when string_starts_with t "##" ->
-           loop lines
-        | t :: ts when t.[0] == '#' ->
-           error line
-        | _ ->
-           Ok (line :: lines)
-      end
+    | line :: lines -> parse_line line lines loop
     | [] -> Error "no rooms (append some + characters to the file)" in
   loop lines
 
