@@ -58,6 +58,7 @@ let cfg_cell_dim = ref (256, 256, 256)
 let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
 let cfg_ladder_tex = ref @@ Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0), 0.0)
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
+let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
 let cfg_lamp_width = ref 64
 let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0), 0.0)
 let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
@@ -382,8 +383,11 @@ let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
                   caulk caulk caulk caulk caulk !cfg_ceiling_tex true in
     let brush = translate brush (dx + width_shift) (dy + len_shift) in
     rotate_brush mat brush in
+  let lamp_tex = match ascii_get ascii_art pos with
+    | Some '|' | Some '-' -> !cfg_vent_lamp_tex
+    | _ -> !cfg_lamp_tex in
   let lamp_brush = create_cuboid (!cfg_lamp_width, !cfg_lamp_width, !cfg_wall_thickness)
-                     caulk caulk caulk caulk caulk !cfg_lamp_tex true in
+                     caulk caulk caulk caulk caulk lamp_tex true in
   lamp_brush :: List.map (fun m -> create m (0, 1, 1) (1, 0, 1)) rotations
   |> translate_brushes (0, 0, dim_z / 2 + !cfg_wall_thickness / 2)
 
@@ -868,6 +872,7 @@ let eat_option_lines : string list -> (string list, string) result
         | "#wall_tex_ladder" :: rest -> let* () = parse_tex cfg_wall_tex_ladder rest in loop lines
         | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
         | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
+        | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
         | "#wall_tex_ply" :: ply :: rest ->
            let* p = try Ok (int_of_string ply) with _ -> error line in
            let* () = parse_tex_setter (fun tex -> Hashtbl.add cfg_wall_tex_ply p tex) rest in
