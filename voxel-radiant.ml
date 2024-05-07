@@ -66,6 +66,7 @@ let cfg_wall_tex_ply : (int, texture) Hashtbl.t = Hashtbl.create 64
 let cfg_wall_tex_random : texture array option ref = ref None
 let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
 let cfg_wall_thickness = ref 32
+let cfg_vent_front_tex = ref @@ !cfg_wall_tex
 let cfg_ladders = ref true
 let cfg_ladder_width = ref 96
 let cfg_ladder_spacing = ref 32
@@ -76,6 +77,7 @@ let cfg_double_floor_depth = ref 32
 let cfg_double_floor_width = ref 96
 let cfg_double_floor_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
 let cfg_navcon_radius = ref 50
+let cfg_extend_to_sky : char list ref = ref ['@']
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -325,11 +327,12 @@ let set_vertical_cells : ascii_art -> unit
           let rec loop p =
             if ply + p >= plies then ()
             else if (p + 1) * dim_z > lim_z then ()
-            else if ascii.(ply + p).(row).(col) = '@' then ()
+            (* stop at another extension, do not overwrite, will see it later *)
+            else if List.mem ascii.(ply + p).(row).(col) !cfg_extend_to_sky then ()
             else let () = ascii.(ply + p).(row).(col) <- c in loop (p + 1) in
           loop 1 in
         match ascii_get ascii (row, col, ply) with
-        | Some '@' -> set_above '+' max_int
+        | Some c when List.mem c !cfg_extend_to_sky -> set_above '+' max_int
         | Some 'a' -> set_above 'g' 128
         | Some c when needs_128 c -> set_above '+' 128
         | _ -> ()
@@ -465,7 +468,7 @@ let create_vent
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   assert (dim_x = dim_y);
   let wall = !cfg_wall_tex in
-  let create v = create_cuboid v wall wall wall wall wall wall true in
+  let create v = create_cuboid v !cfg_vent_front_tex !cfg_vent_front_tex wall wall wall wall true in
   let brush = create (dim_x, dim_y / 4, dim_z) in
   let brush0 = translate_brush (0, dim_y / 4 + dim_y / 8, 0) brush in
   let brush1 = translate_brush (0, -dim_y / 4 - dim_y / 8, 0) brush in
@@ -873,6 +876,7 @@ let eat_option_lines : string list -> (string list, string) result
         | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
         | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
         | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
+        | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
         | "#wall_tex_ply" :: ply :: rest ->
            let* p = try Ok (int_of_string ply) with _ -> error line in
            let* () = parse_tex_setter (fun tex -> Hashtbl.add cfg_wall_tex_ply p tex) rest in
@@ -917,7 +921,12 @@ let eat_option_lines : string list -> (string list, string) result
         | ["#single_sky"] ->
            cfg_single_sky := true;
            loop lines
+        | "#extend_to_sky" :: strs ->
+           cfg_extend_to_sky := List.map (fun s -> s.[0]) strs;
+           loop lines
         | ["#ply"] ->
+           loop lines
+        | t :: _ when string_starts_with t "##" ->
            loop lines
         | t :: ts when t.[0] == '#' ->
            error line
