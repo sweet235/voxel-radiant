@@ -78,6 +78,7 @@ let cfg_double_floor_width = ref 96
 let cfg_double_floor_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
 let cfg_navcon_radius = ref 50
 let cfg_extend_to_sky : char list ref = ref ['@']
+let cfg_no_navcon_top_humans : char list ref = ref []
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -750,7 +751,7 @@ let write_buildings : ascii_art -> out_channel -> unit
  *)
 
 let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> unit
-  = fun arr down_max up_max pounces_up uses_arm stream ->
+  = fun arr down_max up_max pounces_up is_human stream ->
   let (num_rows, num_cols, num_plies) = array3_dim arr in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let dist_from_edge_bottom = !cfg_navcon_radius in
@@ -800,7 +801,11 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
                 | _ -> upper_end, lower_end in
               let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 %s\n" x z y x' z' y' !cfg_navcon_radius twoway in
               output_string stream line in
-        List.iter f rotations;
+        let no_navcon_top_humans =
+          match ascii_get arr pos with
+          | Some c when List.mem c !cfg_no_navcon_top_humans -> true
+          | _ -> false in
+        if not (is_human && no_navcon_top_humans) then List.iter f rotations;
         if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
           begin
             let f mat =
@@ -820,7 +825,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
                 output_string stream line in
             List.iter f rotations;
           end;
-        if uses_arm && ascii_get arr pos = Some 'a' then
+        if is_human && ascii_get arr pos = Some 'a' then
           let f mat =
             let forward = mat ***| forward in
             if exists (pos +++ forward) && not (exists (pos +++ forward +++ down)) then
@@ -909,6 +914,7 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#ladders"; "off"] -> let () = cfg_ladders := false in loop lines
     | ["#single_sky"] -> let () = cfg_single_sky := true in loop lines
     | "#extend_to_sky" :: strs -> cfg_extend_to_sky := List.map (fun s -> s.[0]) strs; loop lines
+    | "#no_navcon_top_humans" :: strs -> cfg_no_navcon_top_humans := List.map (fun s -> s.[0]) strs; loop lines
     | ["#ply"] -> loop lines
     | t :: _ when string_starts_with t "##" -> loop lines
     | t :: ts when t.[0] = '#' -> error line
