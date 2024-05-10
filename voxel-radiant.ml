@@ -79,6 +79,7 @@ let cfg_double_floor_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.
 let cfg_navcon_radius = ref 50
 let cfg_extend_to_sky : char list ref = ref ['@']
 let cfg_no_navcon_top_humans : char list ref = ref []
+let cfg_minlight = ref None
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -580,6 +581,9 @@ let write_map : brush list -> out_channel -> unit
   let put str = output_string stream str in
   put "{\n";
   put "\"classname\" \"worldspawn\"\n";
+  let () = match !cfg_minlight with
+    | None -> ()
+    | Some n -> put @@ Printf.sprintf "\"_minlight\" \"%d\"\n" n in
   let put_brush brush =
     put @@ string_of_brush brush in
   List.iter put_brush brushes;
@@ -911,6 +915,7 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#eggs_num"; n] -> let* () = parse_int cfg_eggs_num n in loop lines
     | ["#eggs_dist"; n] -> let* () = parse_int cfg_eggs_dist n in loop lines
     | ["#navcon_radius"; n] -> let* () = parse_int cfg_navcon_radius n in loop lines
+    | ["#minlight"; n] -> let* () = try cfg_minlight := Some (int_of_string n); Ok (); with _ -> error line in loop lines
     | ["#ladders"; "off"] -> let () = cfg_ladders := false in loop lines
     | ["#single_sky"] -> let () = cfg_single_sky := true in loop lines
     | "#extend_to_sky" :: strs -> cfg_extend_to_sky := List.map (fun s -> s.[0]) strs; loop lines
