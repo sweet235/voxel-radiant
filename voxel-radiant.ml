@@ -80,6 +80,7 @@ let cfg_navcon_radius = ref 50
 let cfg_extend_to_sky : char list ref = ref ['@']
 let cfg_no_navcon_top_humans : char list ref = ref []
 let cfg_minlight = ref None
+let cfg_wall_sky = ref false
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -226,6 +227,10 @@ let array3_dim : ascii_art -> int vec3
   let num_cols = Array.length (Array.get (Array.get arr 0) 0) in
   (num_lines, num_cols, num_plies)
 
+let is_on_grid : ascii_art -> int vec3 -> bool
+  = fun arr (row, col, ply) ->
+  let (rows, cols, plies) = array3_dim arr in
+  row >= 0 && row < rows && col >= 0 && col < cols && ply >= 0 && ply < plies
 
 (*
  * parsing the input file
@@ -529,7 +534,8 @@ let create_cell : ascii_art -> int vec3 -> brush list
   (* walls if needed *)
   let one_side mat result =
     let forward = mat ***| (-1, 0, 0) in
-    if not @@ is_cell ascii_art (pos +++ forward) then
+    if (not (!cfg_wall_sky) || is_on_grid ascii_art (pos +++ forward))
+       && (not @@ is_cell ascii_art (pos +++ forward)) then
       let needs_ladder = wall_has_ladder ascii_art pos forward in
       let (dx, dy, _) = mat ***| !cfg_cell_dim in
       let create t0 t1 t2 t3 t4 t5 delta =
@@ -555,6 +561,21 @@ let create_single_sky : ascii_art -> brush
   create_cuboid (x, y, z) caulk caulk caulk caulk caulk !cfg_sky_tex true
   |> translate_brush (x / 2, y / 2, plies * dim_z + !cfg_wall_thickness / 2)
 
+let create_wall_sky : ascii_art -> brush list
+  = fun ascii_art ->
+  let (rows, cols, plies) = array3_dim ascii_art in
+  let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+  let brush0 = create_cuboid (rows * dim_x, !cfg_wall_thickness, plies * dim_z)
+                 caulk caulk !cfg_sky_tex caulk caulk caulk true
+               |> translate_brush ((rows * dim_x) / 2, -(!cfg_wall_thickness / 2), (plies * dim_z) / 2) in
+  let brush1 = rotate_brush rotz180 brush0
+               |> translate_brush (rows * dim_x, cols * dim_y, 0) in
+  let brush2 = create_cuboid (!cfg_wall_thickness, cols * dim_y, plies * dim_z)
+                 caulk !cfg_sky_tex caulk caulk caulk caulk true
+               |> translate_brush (-(!cfg_wall_thickness / 2), (cols * dim_y) / 2, (plies * dim_z) / 2) in
+  let brush3 = rotate_brush rotz180 brush2
+               |> translate_brush (rows * dim_x, cols * dim_y, 0) in
+  [brush0; brush1; brush2; brush3]
 
 (*
  * creating all cells
@@ -917,6 +938,7 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#navcon_radius"; n] -> let* () = parse_int cfg_navcon_radius n in loop lines
     | ["#minlight"; n] -> let* () = try cfg_minlight := Some (int_of_string n); Ok (); with _ -> error line in loop lines
     | ["#ladders"; "off"] -> let () = cfg_ladders := false in loop lines
+    | ["#wall_sky"] -> let () = cfg_wall_sky := true in loop lines
     | ["#single_sky"] -> let () = cfg_single_sky := true in loop lines
     | "#extend_to_sky" :: strs -> cfg_extend_to_sky := List.map (fun s -> s.[0]) strs; loop lines
     | "#no_navcon_top_humans" :: strs -> cfg_no_navcon_top_humans := List.map (fun s -> s.[0]) strs; loop lines
@@ -960,6 +982,7 @@ let main : string -> string -> (unit, string) result
   if dim_z = 1 then cfg_ladders := false;
   let brushes = compile_ascii_art arr in
   let brushes = if !cfg_single_sky then create_single_sky arr :: brushes else brushes in
+  let brushes = if !cfg_wall_sky then create_wall_sky arr @ brushes else brushes in
   let* stream = open_out_result map_source_path in
   write_map brushes stream;
   write_intermission arr stream;
