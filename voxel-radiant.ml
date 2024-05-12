@@ -335,7 +335,7 @@ let set_vertical_cells : ascii_art -> unit
           loop 1 in
         match ascii_get ascii (row, col, ply) with
         | Some c when List.mem c !cfg_extend_to_sky -> set_above '+' max_int
-        | Some 'a' -> set_above 'g' 128
+        | Some 'a' | Some 'o' -> set_above 'g' 128
         | Some c when needs_128 c -> set_above '+' 128
         | _ -> ()
       done
@@ -484,7 +484,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
   let wt = !cfg_wall_thickness in
 
   let result = match ascii_get ascii_art pos with
-    | Some 'a' | Some 'g' -> create_glass_walls () @ result
+    | Some 'a' | Some 'g' | Some 'o' -> create_glass_walls () @ result
     | Some '|' -> create_vent ident
     | Some '-' -> create_vent rotz90
     | _ -> result in
@@ -676,7 +676,7 @@ let dispatch_on_char : ascii_art -> int vec3 -> building list
   | '^' -> create_eggs rotz180
   | '>' -> create_eggs rotz90
   | '<' -> create_eggs rotzm90
-  | 'O' ->
+  | 'O' | 'o' ->
      [Building ((dim_x / 2, dim_y / 2, 0), "alien_overmind")]
   | 'B' ->
      [Building ((dim_x / 2, dim_y / 2, 0), "alien_booster")]
