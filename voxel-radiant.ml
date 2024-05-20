@@ -56,7 +56,7 @@ type brush = Cuboid of surf * surf * surf * surf * surf * surf
 let cfg_ceiling_tex = ref @@ Texture ("shared_tech/floortile1a", (0.125, 0.125), (0, 0), 0.0)
 let cfg_cell_dim = ref (256, 256, 256)
 let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
-let cfg_ladder_tex = ref @@ Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0), 0.0)
+(* let cfg_ladder_tex = ref @@ None(\* Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0), 0.0) *\) *)
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
 let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
 let cfg_lamp_width = ref 64
@@ -64,7 +64,7 @@ let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0), 0.
 let cfg_wall_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
 let cfg_wall_tex_ply : (int, texture) Hashtbl.t = Hashtbl.create 64
 let cfg_wall_tex_random : texture array option ref = ref None
-let cfg_wall_tex_ladder = ref @@ !cfg_wall_tex
+let cfg_wall_tex_ladder = ref @@ None
 let cfg_wall_thickness = ref 32
 let cfg_vent_front_tex = ref @@ !cfg_wall_tex
 let cfg_ladders = ref true
@@ -545,7 +545,9 @@ let create_cell : ascii_art -> int vec3 -> brush list
         let brushes = rotate_brushes mat brushes in
         let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
         translate_brushes shift brushes in
-      let tex = get_cfg_wall_tex ply in
+      let tex = match !cfg_wall_tex_ladder with
+        | Some t when needs_ladder -> t
+        | _ -> get_cfg_wall_tex ply in
       let result = create caulk tex caulk caulk !cfg_floor_tex !cfg_ceiling_tex 0 @ result in
       result
     else result in
@@ -739,6 +741,11 @@ let dispatch_on_char : ascii_art -> int vec3 -> building list
      [Building ((dim_x / 2, dim_y / 2 - 32, 0), "human_mgturret");
       Building ((dim_x / 2, dim_y / 2 + 32, 0), "human_mgturret")
      ]
+  | 'P' ->
+     let bs = [Building ((0, -32, 0), "human_mgturret");
+               Building ((0, 32, 0), "human_rocketpod")] in
+     let bs = rotate_buildings bs (List.nth rotations (Random.int 4)) in
+     translate_buildings bs (dim_x / 2, dim_y / 2, 0)
   | 'a' ->
      [Building ((dim_x / 2, dim_y / 2, 0), "human_armoury")]
   | 'm' ->
@@ -901,7 +908,9 @@ let eat_option_lines : string list -> (string list, string) result
     | "#floor_tex" :: rest -> let* () = parse_tex cfg_floor_tex rest in loop lines
     | "#double_floor_tex" :: rest -> let* () = parse_tex cfg_double_floor_tex rest in loop lines
     | "#wall_tex" :: rest -> let* () = parse_tex cfg_wall_tex rest in loop lines
-    | "#wall_tex_ladder" :: rest -> let* () = parse_tex cfg_wall_tex_ladder rest in loop lines
+    | "#wall_tex_ladder" :: rest ->
+       let* () = parse_tex_setter (fun tex -> cfg_wall_tex_ladder := Some tex) rest in
+       loop lines
     | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
     | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
     | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
