@@ -404,16 +404,19 @@ let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
 let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
   = fun ascii_art ((row, col, ply) as pos) forward ->
   let (_, _, lim_z) = array3_dim ascii_art in
+  let is_walkable v = match ascii_get ascii_art v with
+  | None | Some ' ' | Some '_' | Some 'g' | Some 'o' | Some 'a' -> false
+  | _ -> true in
   let rec needs_ladder_up i =
     if ply + i >= lim_z then false
-    else if not @@ is_cell ascii_art (pos +++ (0, 0, i)) then false
-    else if is_cell ascii_art (pos +++ forward +++ (0, 0, i)) then true
+    else if not @@ is_walkable (pos +++ (0, 0, i)) then false
+    else if is_walkable (pos +++ forward +++ (0, 0, i)) then true
     else needs_ladder_up (i + 1) in
   let rec needs_ladder_down i =
     if ply - i < 0 then true
-    else if not @@ is_cell ascii_art (pos --- (0, 0, i)) then true
-    else if is_cell ascii_art (pos --- (0, 0, i))
-            && is_cell ascii_art (pos +++ forward --- (0, 0, i)) then false
+    else if not @@ is_walkable (pos --- (0, 0, i)) then true
+    else if is_walkable (pos --- (0, 0, i))
+            && is_walkable (pos +++ forward --- (0, 0, i)) then false
     else needs_ladder_down (i + 1) in
   needs_ladder_up 1 && needs_ladder_down 1
 
@@ -788,7 +791,9 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let dist_from_edge_bottom = !cfg_navcon_radius in
   let dist_from_edge_top = !cfg_navcon_radius in
-  let exists pos = is_cell arr pos in
+  let exists pos = match ascii_get arr pos with
+    | None | Some 'g' | Some 'o' | Some 'a' -> false
+    | _ -> true in
   output_string stream "navcon 3\n";
   for ply = 0 to num_plies - 1 do
     for row = 0 to num_rows - 1 do
