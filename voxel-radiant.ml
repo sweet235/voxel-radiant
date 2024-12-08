@@ -789,8 +789,9 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
   = fun arr down_max up_max pounces_up is_human stream ->
   let (num_rows, num_cols, num_plies) = array3_dim arr in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
-  let dist_from_edge_bottom = !cfg_navcon_radius in
-  let dist_from_edge_top = !cfg_navcon_radius in
+  let dist_margin = 10 in
+  let dist_from_edge_bottom = !cfg_navcon_radius + dist_margin in
+  let dist_from_edge_top = !cfg_navcon_radius + dist_margin in
   let exists pos = match ascii_get arr pos with
     | None | Some 'g' | Some 'o' | Some 'a' -> false
     | _ -> true in
