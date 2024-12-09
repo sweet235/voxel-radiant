@@ -362,6 +362,7 @@ let parse_input : string list -> ascii_art
 
 let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0), 0.0)
 let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
+let nobuild = Texture ("common/nobuild", (1.0, 1.0), (0, 0), 0.0)
 let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0), 0.0)
 let glass = Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
 
@@ -489,6 +490,10 @@ let create_vent
   let brush1 = translate_brush (0, -dim_y / 4 - dim_y / 8, 0) brush in
   rotate_brushes mat [brush0; brush1]
 
+let create_nobuild () =
+  let t = nobuild in
+  create_cuboid !cfg_cell_dim t t t t t t true
+
 let create_cell : ascii_art -> int vec3 -> brush list
   = fun ascii_art ((row, col, ply) as pos) ->
   let result = [] in
@@ -500,6 +505,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
     | Some 'a' | Some 'g' | Some 'o' -> create_glass_walls () @ result
     | Some '|' -> create_vent ident
     | Some '-' -> create_vent rotz90
+    | Some '!' -> [create_nobuild ()]
     | _ -> result in
 
   (* floor if needed *)
