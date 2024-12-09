@@ -70,6 +70,7 @@ let cfg_vent_front_tex = ref @@ !cfg_wall_tex
 let cfg_ladders = ref true
 let cfg_ladder_width = ref 96
 let cfg_ladder_spacing = ref 32
+let cfg_ladder_step = ref 2
 let cfg_single_sky = ref false
 let cfg_eggs_num = ref 3
 let cfg_eggs_dist = ref 60
@@ -418,7 +419,7 @@ let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
     else if is_walkable (pos --- (0, 0, i))
             && is_walkable (pos +++ forward --- (0, 0, i)) then false
     else needs_ladder_down (i + 1) in
-  needs_ladder_up 1 && needs_ladder_down 1
+  needs_ladder_up 1 && needs_ladder_down 1 && ((row + col) mod !cfg_ladder_step == 0)
 
 let ladder_thickness = 4
 let invisible_ladder_thickness = 6
@@ -842,7 +843,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
         let no_navcon_top_humans =
           match ascii_get arr pos with
           | Some c when List.mem c !cfg_no_navcon_top_humans -> true
-          | _ -> false in
+          | _ -> let (row, col, _) = pos in row + col mod !cfg_ladder_step == 0 in
         if not (is_human && no_navcon_top_humans) then List.iter f rotations;
         if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
           begin
@@ -948,6 +949,7 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#lamp_width"; n] -> let* () = parse_int cfg_lamp_width n in loop lines
     | ["#ladder_width"; n] -> let* () = parse_int cfg_ladder_width n in loop lines
     | ["#ladder_spacing"; n] -> let* () = parse_int cfg_ladder_spacing n in loop lines
+    | ["#ladder_step"; n] -> let* () = parse_int cfg_ladder_step n in loop lines
     | ["#eggs_num"; n] -> let* () = parse_int cfg_eggs_num n in loop lines
     | ["#eggs_dist"; n] -> let* () = parse_int cfg_eggs_dist n in loop lines
     | ["#navcon_radius"; n] -> let* () = parse_int cfg_navcon_radius n in loop lines
