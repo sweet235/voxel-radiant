@@ -58,6 +58,7 @@ let cfg_cell_dim = ref (256, 256, 256)
 let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
 (* let cfg_ladder_tex = ref @@ None(\* Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0), 0.0) *\) *)
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
+let cfg_lamp_step = ref 1
 let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
 let cfg_lamp_width = ref 64
 let cfg_sky_tex = ref @@ Texture ("shared_space/sky01", (0.25, 0.25), (0, 0), 0.0)
@@ -373,7 +374,7 @@ let is_sky_cell : ascii_art -> int vec3 -> bool
   = fun ascii_art (_, _, ply) -> ply = Array.length ascii_art - 1
 
 let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
-  = fun ascii_art pos ->
+  = fun ascii_art ((row, col, ply) as pos) ->
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let translate brush dx dy =
     translate_brush ((dx - !cfg_lamp_width) / 4, (dy + !cfg_lamp_width) / 4, 0) brush in
@@ -394,9 +395,12 @@ let ceiling_with_lamp : ascii_art -> int vec3 -> brush list
                   caulk caulk caulk caulk caulk !cfg_ceiling_tex true in
     let brush = translate brush (dx + width_shift) (dy + len_shift) in
     rotate_brush mat brush in
-  let lamp_tex = match ascii_get ascii_art pos with
-    | Some '|' | Some '-' -> !cfg_vent_lamp_tex
-    | _ -> !cfg_lamp_tex in
+  let lamp_tex =
+    if (row + col) mod !cfg_lamp_step <> 0
+    then !cfg_ceiling_tex
+    else match ascii_get ascii_art pos with
+         | Some '|' | Some '-' -> !cfg_vent_lamp_tex
+         | _ -> !cfg_lamp_tex in
   let lamp_brush = create_cuboid (!cfg_lamp_width, !cfg_lamp_width, !cfg_wall_thickness)
                      caulk caulk caulk caulk caulk lamp_tex true in
   lamp_brush :: List.map (fun m -> create m (0, 1, 1) (1, 0, 1)) rotations
@@ -845,7 +849,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
         let no_navcon_top_humans =
           match ascii_get arr pos with
           | Some c when List.mem c !cfg_no_navcon_top_humans -> true
-          | _ -> let (row, col, _) = pos in row + col mod !cfg_ladder_step == 0 in
+          | _ -> let (row, col, _) = pos in (row + col) mod !cfg_ladder_step == 0 in
         if not (is_human && no_navcon_top_humans) then List.iter f rotations;
         if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
           begin
@@ -922,6 +926,7 @@ let eat_option_lines : string list -> (string list, string) result
        loop lines
     | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
     | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
+    | ["#lamp_step"; n] -> let* () = parse_int cfg_lamp_step n in loop lines
     | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
     | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
     | "#wall_tex_ply" :: ply :: rest ->
