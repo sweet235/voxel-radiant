@@ -543,16 +543,18 @@ let create_cell : ascii_art -> int vec3 -> brush list
       let needs_ladder = wall_has_ladder ascii_art pos forward in
       let (dx, dy, _) = mat ***| !cfg_cell_dim in
       let create t0 t1 t2 t3 t4 t5 delta =
-        let wall_brush = create_cuboid (!cfg_wall_thickness, abs dy, dim_z)
+        let width, width_shift = if not @@ is_cell ascii_art @@ pos +++ mat ***| (-1, -1, 0)
+                                 then abs dy, 0 else abs dy - !cfg_wall_thickness, !cfg_wall_thickness / 2 in
+        let wall_brush = create_cuboid (!cfg_wall_thickness, width, dim_z)
                            t0 t1 t2 t3 t4 t5 true in
         let brushes = wall_brush :: if needs_ladder then create_ladder !cfg_ladder_width else [] in
         let brushes = rotate_brushes mat brushes in
-        let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
+        let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, width_shift, 0) in
         translate_brushes shift brushes in
       let tex = match !cfg_wall_tex_ladder with
         | Some t when needs_ladder -> t
         | _ -> get_cfg_wall_tex ply in
-      let result = create caulk tex caulk caulk !cfg_floor_tex !cfg_ceiling_tex 0 @ result in
+      let result = create caulk tex tex caulk !cfg_floor_tex !cfg_ceiling_tex 0 @ result in
       result
     else result in
   map_acc one_side rotations result
