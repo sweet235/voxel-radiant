@@ -336,6 +336,7 @@ let set_vertical_cells : ascii_art -> unit
           let rec loop p =
             if ply + p >= plies then ()
             else if (p + 1) * dim_z > lim_z then ()
+            else if ascii.(ply + p).(row).(col) = '!' then ()
             (* stop at another extension, do not overwrite, will see it later *)
             else if List.mem ascii.(ply + p).(row).(col) !cfg_extend_to_sky then ()
             else let () = ascii.(ply + p).(row).(col) <- c in loop (p + 1) in
@@ -492,7 +493,7 @@ let create_vent
 
 let create_nobuild () =
   let t = nobuild in
-  create_cuboid !cfg_cell_dim t t t t t t true
+  create_cuboid (!cfg_cell_dim +++ (40, 40, 0)) t t t t t t true
 
 let create_cell : ascii_art -> int vec3 -> brush list
   = fun ascii_art ((row, col, ply) as pos) ->
