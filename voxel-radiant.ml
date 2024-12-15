@@ -79,6 +79,7 @@ let cfg_double_floor_depth = ref 32
 let cfg_double_floor_width = ref 96
 let cfg_double_floor_tex = ref @@ Texture ("shared_tech/floortile1b", (0.125, 0.125), (0, 0), 0.0)
 let cfg_navcon_radius = ref 50
+let cfg_navcon_max_height = ref max_int
 let cfg_extend_to_sky : char list ref = ref ['@']
 let cfg_no_navcon_top_humans : char list ref = ref []
 let cfg_minlight = ref None
@@ -972,6 +973,7 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#eggs_num"; n] -> let* () = parse_int cfg_eggs_num n in loop lines
     | ["#eggs_dist"; n] -> let* () = parse_int cfg_eggs_dist n in loop lines
     | ["#navcon_radius"; n] -> let* () = parse_int cfg_navcon_radius n in loop lines
+    | ["#navcon_max_height"; n] -> let* () = parse_int cfg_navcon_max_height n in loop lines
     | ["#minlight"; n] -> let* () = try cfg_minlight := Some (int_of_string n); Ok (); with _ -> error line in loop lines
     | ["#ladders"; "off"] -> let () = cfg_ladders := false in loop lines
     | ["#wall_sky"] -> let () = cfg_wall_sky := true in loop lines
@@ -1031,18 +1033,19 @@ let main : string -> string -> (unit, string) result
        close_out stream;
        loop rest
     | [] -> Ok () in
+  let cap n = min !cfg_navcon_max_height n in
   loop [
-      ("builder", max_int, 0, false, false);
-      ("builderupg", max_int, max_int, false, false);
-      ("level0", max_int, max_int, false, false);
-      ("level1", max_int, max_int, false, false);
-      ("level2", max_int, 256, false, false);
-      ("level2upg", max_int, 256, false, false);
-      ("level3", max_int, 256, true, false);
-      ("level3upg", max_int, 390, true, false);
-      ("level4", max_int, 0, false, false);
-      ("human_naked", 256, max_int, false, true);
-      ("human_bsuit", 512, max_int, false, true);
+      ("builder", cap max_int, 0, false, false);
+      ("builderupg", cap max_int, cap max_int, false, false);
+      ("level0", cap max_int, cap max_int, false, false);
+      ("level1", cap max_int, cap max_int, false, false);
+      ("level2", cap max_int, cap 256, false, false);
+      ("level2upg", cap max_int, cap 256, false, false);
+      ("level3", cap max_int, cap 256, true, false);
+      ("level3upg", cap max_int, cap 390, true, false);
+      ("level4", cap max_int, 0, false, false);
+      ("human_naked", cap 256, cap max_int, false, true);
+      ("human_bsuit", cap 512, cap max_int, false, true);
     ]
 
 let main_cmdline () =
