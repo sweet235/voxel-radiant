@@ -556,12 +556,16 @@ let create_cell : ascii_art -> int vec3 -> brush list
       let create t0 t1 t2 t3 t4 t5 delta =
         let width, width_shift = if not @@ is_cell ascii_art @@ pos +++ mat ***| (-1, -1, 0)
                                  then abs dy, 0 else abs dy - !cfg_wall_thickness, !cfg_wall_thickness / 2 in
+        let shift_length = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, 0, 0) in
+        let shift_width = mat ***| (0, width_shift, 0) in
         let wall_brush = create_cuboid (!cfg_wall_thickness, width, dim_z)
-                           t0 t1 t2 t3 t4 t5 true in
-        let brushes = wall_brush :: if needs_ladder then create_ladder !cfg_ladder_width else [] in
-        let brushes = rotate_brushes mat brushes in
-        let shift = mat ***| (-(abs dx + !cfg_wall_thickness - delta) / 2, width_shift, 0) in
-        translate_brushes shift brushes in
+                           t0 t1 t2 t3 t4 t5 true
+                         |> rotate_brush mat
+                         |> translate_brush (shift_length +++ shift_width) in
+        let ladder_brushes = (if needs_ladder then create_ladder !cfg_ladder_width else [])
+                             |> rotate_brushes mat
+                             |> translate_brushes shift_length in
+        wall_brush :: ladder_brushes in
       let tex = match !cfg_wall_tex_ladder with
         | Some t when needs_ladder -> t
         | _ -> get_cfg_wall_tex ply in
