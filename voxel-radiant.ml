@@ -847,12 +847,13 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
               let goes_up = down_dist * dim_z <= up_max && !up_allowed in
               let goes_down = down_dist * dim_z <= down_max in
               let twoway = if goes_up && goes_down then "1" else "0" in
-              let (x, y, z), (x', y', z') =
-                match goes_up, goes_down with
-                | true, false -> lower_end, upper_end
-                | _ -> upper_end, lower_end in
-              let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 %s\n" x z y x' z' y' !cfg_navcon_radius twoway in
-              output_string stream line in
+              if goes_down || goes_up then
+                let (x, y, z), (x', y', z') =
+                  match goes_up, goes_down with
+                  | true, false -> lower_end, upper_end
+                  | _ -> upper_end, lower_end in
+                let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 %s\n" x z y x' z' y' !cfg_navcon_radius twoway in
+                output_string stream line in
         let no_navcon_top_humans =
           match ascii_get arr pos with
           | Some c when List.mem c !cfg_no_navcon_top_humans -> true
