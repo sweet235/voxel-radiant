@@ -235,6 +235,19 @@ let is_on_grid : ascii_art -> int vec3 -> bool
   let (rows, cols, plies) = array3_dim arr in
   row >= 0 && row < rows && col >= 0 && col < cols && ply >= 0 && ply < plies
 
+let ascii_iter : (int vec3 -> unit) -> ascii_art -> unit
+  = fun f arr ->
+  let (num_rows, num_cols, num_plies) = array3_dim arr in
+  let iter () =
+    for ply = 0 to num_plies - 1 do
+      for row = 0 to num_rows - 1 do
+        for col = 0 to num_cols - 1 do
+          f (row, col, ply)
+        done
+      done
+    done in
+  iter ()
+
 (*
  * parsing the input file
  *)
@@ -650,23 +663,18 @@ let intermission_string : int -> int -> int -> string
 
 let write_intermission : ascii_art -> out_channel -> unit
   = fun arr stream ->
-  let (num_lines, num_cols, num_plies) = array3_dim arr in
-  let f opt =
+  let search_char opt =
     let is_hit = match opt with Some needle -> fun c -> c = needle | None -> fun _ -> true in
-    for ply = 0 to num_plies - 1 do
-      for line = 0 to num_lines - 1 do
-        for col = 0 to num_cols - 1 do
-          match ascii_get arr (line, col, ply) with
-          | Some c when is_hit c ->
-             let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
-             output_string stream (intermission_string (line * dim_x + dim_x / 2) (col * dim_y + dim_y / 2)
-                                     (ply * dim_z + dim_z / 2));
-             raise Exit
-          | _ -> ()
-        done
-      done
-    done in
-  try List.iter f [Some 'R'; None] with Exit -> ()
+    let f (row, col, ply) =
+      match ascii_get arr (row, col, ply) with
+      | Some c when is_hit c ->
+         let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+         output_string stream (intermission_string (row * dim_x + dim_x / 2) (col * dim_y + dim_y / 2)
+                                 (ply * dim_z + dim_z / 2));
+         raise Exit
+      | _ -> () in
+    ascii_iter f arr in
+  try List.iter search_char [Some 'I'; Some 'R'; None] with Exit -> ()
 
 (*
  * buildings
