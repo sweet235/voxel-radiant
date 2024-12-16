@@ -56,7 +56,6 @@ type brush = Cuboid of surf * surf * surf * surf * surf * surf
 let cfg_ceiling_tex = ref @@ Texture ("shared_tech/floortile1a", (0.125, 0.125), (0, 0), 0.0)
 let cfg_cell_dim = ref (256, 256, 256)
 let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
-(* let cfg_ladder_tex = ref @@ None(\* Texture ("shared_tech/floortile1b", (0.0625, 0.0625), (0, 0), 0.0) *\) *)
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
 let cfg_lamp_step = ref 1
 let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
@@ -300,21 +299,17 @@ let ascii_art_limits : ascii_art -> int vec3 * int vec3
   = fun ascii ->
   let min_ply, min_row, min_col = ref max_int, ref max_int, ref max_int in
   let max_ply, max_row, max_col = ref min_int, ref min_int, ref min_int in
-  for ply = 0 to Array.length ascii - 1 do
-    for row = 0 to Array.length ascii.(ply) - 1 do
-      for col = 0 to Array.length ascii.(ply).(row) - 1 do
-        if is_cell ascii (row, col, ply) then
-          begin
-            if ply < !min_ply then min_ply := ply;
-            if row < !min_row then min_row := row;
-            if col < !min_col then min_col := col;
-            if ply > !max_ply then max_ply := ply;
-            if row > !max_row then max_row := row;
-            if col > !max_col then max_col := col;
-          end
-      done
-    done
-  done;
+  let f (row, col, ply) =
+    if is_cell ascii (row, col, ply) then
+      begin
+        if ply < !min_ply then min_ply := ply;
+        if row < !min_row then min_row := row;
+        if col < !min_col then min_col := col;
+        if ply > !max_ply then max_ply := ply;
+        if row > !max_row then max_row := row;
+        if col > !max_col then max_col := col;
+      end in
+  ascii_iter f ascii;
   ((!min_row, !min_col, !min_ply), (!max_row, !max_col, !max_ply))
 
 let crop_ascii_art : ascii_art -> ascii_art
@@ -343,26 +338,22 @@ let set_vertical_cells : ascii_art -> unit
     | _ -> false in
   let (rows, cols, plies) = array3_dim ascii in
   let (_, _, dim_z) = !cfg_cell_dim in
-  for ply = 0 to plies - 1 do
-    for row = 0 to rows - 1 do
-      for col = 0 to cols - 1 do
-        let set_above c lim_z =
-          let rec loop p =
-            if ply + p >= plies then ()
-            else if (p + 1) * dim_z > lim_z then ()
-            else if ascii.(ply + p).(row).(col) = '!' then ()
-            (* stop at another extension, do not overwrite, will see it later *)
-            else if List.mem ascii.(ply + p).(row).(col) !cfg_extend_to_sky then ()
-            else let () = ascii.(ply + p).(row).(col) <- c in loop (p + 1) in
-          loop 1 in
-        match ascii_get ascii (row, col, ply) with
-        | Some c when List.mem c !cfg_extend_to_sky -> set_above '+' max_int
-        | Some 'a' | Some 'o' -> set_above 'g' 128
-        | Some c when needs_128 c -> set_above '+' 128
-        | _ -> ()
-      done
-    done
-  done
+  let f (row, col, ply) =
+    let set_above c lim_z =
+      let rec loop p =
+        if ply + p >= plies then ()
+        else if (p + 1) * dim_z > lim_z then ()
+        else if ascii.(ply + p).(row).(col) = '!' then ()
+        (* stop at another extension, do not overwrite, will see it later *)
+        else if List.mem ascii.(ply + p).(row).(col) !cfg_extend_to_sky then ()
+        else let () = ascii.(ply + p).(row).(col) <- c in loop (p + 1) in
+      loop 1 in
+    match ascii_get ascii (row, col, ply) with
+    | Some c when List.mem c !cfg_extend_to_sky -> set_above '+' max_int
+    | Some 'a' | Some 'o' -> set_above 'g' 128
+    | Some c when needs_128 c -> set_above '+' 128
+    | _ -> () in
+  ascii_iter f ascii
 
 let parse_input : string list -> ascii_art
   = fun ls ->
@@ -621,17 +612,11 @@ let create_wall_sky : ascii_art -> brush list
 let compile_ascii_art : ascii_art -> brush list
   = fun ascii_art ->
   let brushes = ref [] in
-  let (num_rows, num_cols, num_plies) = array3_dim ascii_art in
-  for ply = 0 to num_plies - 1 do
-    for row = 0 to num_rows - 1 do
-      for col = 0 to num_cols - 1 do
-        let pos = (row, col, ply) in
-        if is_cell ascii_art pos then
-          let cell = create_cell ascii_art pos in
-          brushes := cell :: !brushes
-      done
-    done
-  done;
+  let f pos =
+    if is_cell ascii_art pos then
+      let cell = create_cell ascii_art pos in
+      brushes := cell :: !brushes in
+  ascii_iter f ascii_art;
   List.flatten !brushes
 
 let write_map : brush list -> out_channel -> unit
@@ -814,7 +799,6 @@ let write_buildings : ascii_art -> out_channel -> unit
 
 let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> unit
   = fun arr down_max up_max pounces_up is_human stream ->
-  let (num_rows, num_cols, num_plies) = array3_dim arr in
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   let dist_margin = 10 in
   let dist_from_edge_bottom = !cfg_navcon_radius + dist_margin in
@@ -823,86 +807,82 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
     | None | Some 'g' | Some 'o' | Some 'a' -> false
     | _ -> true in
   output_string stream "navcon 3\n";
-  for ply = 0 to num_plies - 1 do
-    for row = 0 to num_rows - 1 do
-      for col = 0 to num_cols - 1 do
-        let pos = (row, col, ply) in
-        let forward = (1, 0, 0) in
-        let down = (0, 0, -1) in
-        let top = (dim_x / 2 - dist_from_edge_top,
-                   dim_y / 2 - dist_from_edge_top,
-                   10) in
-        let bottom = (dim_x / 2 + dist_from_edge_bottom,
-                      dim_y / 2 + dist_from_edge_bottom,
-                      10) in
-        let base = (row * dim_x + dim_x / 2,
-                    col * dim_y + dim_y / 2,
-                    ply * dim_z) in
+  let one_cell (row, col, ply) =
+    let pos = (row, col, ply) in
+    let forward = (1, 0, 0) in
+    let down = (0, 0, -1) in
+    let top = (dim_x / 2 - dist_from_edge_top,
+               dim_y / 2 - dist_from_edge_top,
+               10) in
+    let bottom = (dim_x / 2 + dist_from_edge_bottom,
+                  dim_y / 2 + dist_from_edge_bottom,
+                  10) in
+    let base = (row * dim_x + dim_x / 2,
+                col * dim_y + dim_y / 2,
+                ply * dim_z) in
+    let f mat =
+      let forward = mat ***| forward in
+      if exists pos
+         && exists (pos +++ forward)
+         && not (exists (pos +++ down)) then
+        let up_allowed = ref true in
+        let rec down_loop i =
+          if exists (pos +++ i *** down) && not pounces_up then
+            up_allowed := false;
+          if ply - i < 0 then -1
+          else if not (exists (pos +++ forward +++ i *** down)) then -1
+          else if exists (pos +++ forward +++ i *** down)
+                  && not (exists (pos +++ forward +++ (i + 1) *** down)) then i
+          else down_loop (i + 1) in
+        let down_dist = down_loop 1 in
+        if down_dist > 0 then
+          let sel = forward +++ (0, 0, 1) in
+          let upper_end = base +++ (top ***~ sel) in
+          let lower_end = base +++ (bottom ***~ sel) +++ down_dist *** (0, 0, -dim_z) in
+          let goes_up = down_dist * dim_z <= up_max && !up_allowed in
+          let goes_down = down_dist * dim_z <= down_max in
+          let twoway = if goes_up && goes_down then "1" else "0" in
+          if goes_down || goes_up then
+            let (x, y, z), (x', y', z') =
+              match goes_up, goes_down with
+              | true, false -> lower_end, upper_end
+              | _ -> upper_end, lower_end in
+            let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 %s\n" x z y x' z' y' !cfg_navcon_radius twoway in
+            output_string stream line in
+    let no_navcon_top_humans =
+      match ascii_get arr pos with
+      | Some c when List.mem c !cfg_no_navcon_top_humans -> true
+      | _ -> let (row, col, _) = pos in (row + col) mod !cfg_ladder_step == 0 in
+    if not (is_human && no_navcon_top_humans) then List.iter f rotations;
+    if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
+      begin
         let f mat =
           let forward = mat ***| forward in
           if exists pos
+             && not (exists (pos +++ down))
              && exists (pos +++ forward)
-             && not (exists (pos +++ down)) then
-            let up_allowed = ref true in
-            let rec down_loop i =
-              if exists (pos +++ i *** down) && not pounces_up then
-                up_allowed := false;
-              if ply - i < 0 then -1
-              else if not (exists (pos +++ forward +++ i *** down)) then -1
-              else if exists (pos +++ forward +++ i *** down)
-                      && not (exists (pos +++ forward +++ (i + 1) *** down)) then i
-              else down_loop (i + 1) in
-            let down_dist = down_loop 1 in
-            if down_dist > 0 then
-              let sel = forward +++ (0, 0, 1) in
-              let upper_end = base +++ (top ***~ sel) in
-              let lower_end = base +++ (bottom ***~ sel) +++ down_dist *** (0, 0, -dim_z) in
-              let goes_up = down_dist * dim_z <= up_max && !up_allowed in
-              let goes_down = down_dist * dim_z <= down_max in
-              let twoway = if goes_up && goes_down then "1" else "0" in
-              if goes_down || goes_up then
-                let (x, y, z), (x', y', z') =
-                  match goes_up, goes_down with
-                  | true, false -> lower_end, upper_end
-                  | _ -> upper_end, lower_end in
-                let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 %s\n" x z y x' z' y' !cfg_navcon_radius twoway in
-                output_string stream line in
-        let no_navcon_top_humans =
-          match ascii_get arr pos with
-          | Some c when List.mem c !cfg_no_navcon_top_humans -> true
-          | _ -> let (row, col, _) = pos in (row + col) mod !cfg_ladder_step == 0 in
-        if not (is_human && no_navcon_top_humans) then List.iter f rotations;
-        if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
-          begin
-            let f mat =
-              let forward = mat ***| forward in
-              if exists pos
-                 && not (exists (pos +++ down))
-                 && exists (pos +++ forward)
-                 && exists (pos +++ forward +++ down)
-                 && exists (pos +++ forward +++ 2 *** down)
-                 && exists (pos +++ 2 *** forward)
-                 && exists (pos +++ 2 *** forward +++ down)
-                 && not (exists (pos +++ 2 *** forward +++ 2 *** down)) then
-                let sel = forward +++ (0, 0, 1) in
-                let (x, y, z) = base +++ (top ***~ sel) in
-                let (x', y', z') = base +++ (bottom ***~ sel) +++ (forward ***~ !cfg_cell_dim) +++ (0, 0, -dim_z) in
-                let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 0\n" x' z' y' x z y !cfg_navcon_radius in
-                output_string stream line in
-            List.iter f rotations;
-          end;
-        if is_human && ascii_get arr pos = Some 'a' then
-          let f mat =
-            let forward = mat ***| forward in
-            if exists (pos +++ forward) && not (exists (pos +++ forward +++ down)) then
-              let (x, y, z) = base +++ (forward ***~ (dim_x / 2 - 20, dim_y / 2 - 20, 0)) in
-              let (x', y', z') = (pos +++ forward) ***~ (dim_x, dim_y, dim_z) +++ (dim_x / 2, dim_y / 2, 0) in
-              let line = Printf.sprintf "%d %d %d %d %d %d 15 1 63 0\n" x' z' y' x z y in
-              output_string stream line in
-          List.iter f rotations;
-      done
-    done
-  done
+             && exists (pos +++ forward +++ down)
+             && exists (pos +++ forward +++ 2 *** down)
+             && exists (pos +++ 2 *** forward)
+             && exists (pos +++ 2 *** forward +++ down)
+             && not (exists (pos +++ 2 *** forward +++ 2 *** down)) then
+            let sel = forward +++ (0, 0, 1) in
+            let (x, y, z) = base +++ (top ***~ sel) in
+            let (x', y', z') = base +++ (bottom ***~ sel) +++ (forward ***~ !cfg_cell_dim) +++ (0, 0, -dim_z) in
+            let line = Printf.sprintf "%d %d %d %d %d %d %d 1 63 0\n" x' z' y' x z y !cfg_navcon_radius in
+            output_string stream line in
+        List.iter f rotations;
+      end;
+    if is_human && ascii_get arr pos = Some 'a' then
+      let f mat =
+        let forward = mat ***| forward in
+        if exists (pos +++ forward) && not (exists (pos +++ forward +++ down)) then
+          let (x, y, z) = base +++ (forward ***~ (dim_x / 2 - 20, dim_y / 2 - 20, 0)) in
+          let (x', y', z') = (pos +++ forward) ***~ (dim_x, dim_y, dim_z) +++ (dim_x / 2, dim_y / 2, 0) in
+          let line = Printf.sprintf "%d %d %d %d %d %d 15 1 63 0\n" x' z' y' x z y in
+          output_string stream line in
+      List.iter f rotations in
+  ascii_iter one_cell arr
 
 
 (*
