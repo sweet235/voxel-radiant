@@ -83,6 +83,8 @@ let cfg_extend_to_sky : char list ref = ref ['@']
 let cfg_no_navcon_top_humans : char list ref = ref []
 let cfg_minlight = ref None
 let cfg_wall_sky = ref false
+let cfg_gravity : int vec2 option ref = ref None
+let cfg_gravity_clamp : int vec2 option ref = ref None
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -369,6 +371,7 @@ let parse_input : string list -> ascii_art
 let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0), 0.0)
 let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
 let nobuild = Texture ("common/nobuild", (1.0, 1.0), (0, 0), 0.0)
+let trigger = Texture ("common/trigger", (1.0, 1.0), (0, 0), 0.0)
 let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0), 0.0)
 let glass = Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
 
@@ -794,6 +797,39 @@ let write_buildings : ascii_art -> out_channel -> unit
 
 
 (*
+ * gravity entities
+ *)
+
+let clamp_int : int -> int -> int -> int
+  = fun low high value ->
+  if value < low then low
+  else if value > high then high
+  else value
+
+let write_gravity_cells : ascii_art -> out_channel -> unit
+  = fun ascii_art stream ->
+  match !cfg_gravity with
+  | None -> ()
+  | Some (gbottom, gtop) ->
+     let gmin, gmax =
+       match !cfg_gravity_clamp with
+       | None -> min_int, max_int
+       | Some (min, max) -> min, max in
+     let (rows, cols, plies) = array3_dim ascii_art in
+     let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
+     let (len_x, len_y) = (rows * dim_x, cols * dim_y) in
+     let t = trigger in
+     let brush = create_cuboid (len_x, len_y, dim_z) t t t t t t false in
+     for ply = 0 to plies - 1 do
+       let height_factor = (1.0 -. (float_of_int ply) /. (float_of_int plies)) ** 2.0 in
+       let g = height_factor *. float_of_int (gbottom - gtop) +. float_of_int gtop
+               |> int_of_float
+               |> clamp_int gmin gmax in
+       let b = translate_brush (len_x / 2, len_y / 2, dim_z / 2 + ply * dim_z) brush in
+       Printf.fprintf stream "{\n\"classname\" \"env_afx_gravity\"\n\"amount\" \"%d\"\n%s}\n" g (string_of_brush b)
+     done
+
+(*
  * writing a navcon file
  *)
 
@@ -994,6 +1030,12 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#navcon_max_height"; n] -> let* () = parse_int cfg_navcon_max_height n in loop lines
     | ["#minlight"; n] -> let* () = try cfg_minlight := Some (int_of_string n); Ok (); with _ -> error line in loop lines
     | ["#ladders"; "off"] -> let () = cfg_ladders := false in loop lines
+    | ["#gravity"; minstr; maxstr] ->
+       let* () = catch @@ fun () -> cfg_gravity := Some (int_of_string minstr, int_of_string maxstr) in
+       loop lines
+    | ["#gravity_clamp"; minstr; maxstr] ->
+       let* () = catch @@ fun () -> cfg_gravity_clamp := Some (int_of_string minstr, int_of_string maxstr) in
+       loop lines
     | ["#wall_sky"] -> let () = cfg_wall_sky := true in loop lines
     | ["#single_sky"] -> let () = cfg_single_sky := true in loop lines
     | "#extend_to_sky" :: strs -> cfg_extend_to_sky := List.map (fun s -> s.[0]) strs; loop lines
@@ -1043,6 +1085,7 @@ let main : string -> string -> (unit, string) result
   write_map brushes stream;
   write_intermission arr stream;
   write_buildings arr stream;
+  write_gravity_cells arr stream;
   close_out stream;
   let rec loop = function
     | (classname, down_max, up_max, pounces_up, uses_arm) :: rest ->
