@@ -797,6 +797,31 @@ let write_buildings : ascii_art -> out_channel -> unit
  * writing a navcon file
  *)
 
+let search_cell_in_dir : ascii_art -> int vec3 -> int vec3 -> (ascii_art -> int vec3 -> bool) -> int
+  = fun ascii_art pos dir pred ->
+  let rec loop i =
+    let new_pos = pos +++ i *** dir in
+    if not @@ is_on_grid ascii_art new_pos then -1
+    else if pred ascii_art new_pos then i
+    else loop (i + 1) in
+  loop 0
+
+let search_cell_in_dir1 : ascii_art -> int vec3 -> int vec3 -> (ascii_art -> int vec3 -> bool) -> int
+  = fun ascii_art pos dir pred ->
+  match search_cell_in_dir ascii_art (pos +++ dir) dir pred with
+  | -1 -> -1
+  | n -> n + 1
+
+let next_cell_below : ascii_art -> int vec3 -> int
+  = fun ascii_art ((_, _, ply) as pos) ->
+  match search_cell_in_dir1 ascii_art pos (0, 0, -1) is_cell with -1 -> -1 | n -> ply - n
+
+let cell_with_floor : ascii_art -> int vec3 -> int
+  = fun ascii_art ((_, _, ply) as pos) ->
+  let pred a p =
+    is_cell a p && not (is_cell a (p +++ (0, 0, -1))) in
+  match search_cell_in_dir ascii_art pos (0, 0, -1) pred with -1 -> -1 | n -> ply - n
+
 let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> unit
   = fun arr down_max up_max pounces_up is_human stream ->
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
@@ -839,7 +864,12 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
           let sel = forward +++ (0, 0, 1) in
           let upper_end = base +++ (top ***~ sel) in
           let lower_end = base +++ (bottom ***~ sel) +++ down_dist *** (0, 0, -dim_z) in
-          let goes_up = down_dist * dim_z <= up_max && !up_allowed in
+          let has_ladder =
+            let ply_cell_below = next_cell_below arr pos in
+            let ply_floor = cell_with_floor arr (pos +++ forward) in
+            let floor_cell = (row, col, ply_floor) +++ forward in
+            wall_has_ladder arr floor_cell (-1 *** forward) && ply_cell_below < ply_floor in
+          let goes_up = (down_dist * dim_z <= up_max && !up_allowed) || (is_human && has_ladder) in
           let goes_down = down_dist * dim_z <= down_max in
           let twoway = if goes_up && goes_down then "1" else "0" in
           if goes_down || goes_up then
@@ -852,7 +882,7 @@ let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> un
     let no_navcon_top_humans =
       match ascii_get arr pos with
       | Some c when List.mem c !cfg_no_navcon_top_humans -> true
-      | _ -> let (row, col, _) = pos in (row + col) mod !cfg_ladder_step == 0 in
+      | _ -> false in
     if not (is_human && no_navcon_top_humans) then List.iter f rotations;
     if pounces_up && dim_x < 256 && dim_y < 256 && dim_z < 256 then
       begin
@@ -1032,8 +1062,8 @@ let main : string -> string -> (unit, string) result
       ("level3", cap max_int, cap 256, true, false);
       ("level3upg", cap max_int, cap 390, true, false);
       ("level4", cap max_int, 0, false, false);
-      ("human_naked", cap 256, cap max_int, false, true);
-      ("human_bsuit", cap 512, cap max_int, false, true);
+      ("human_naked", cap 256, 0, false, true);
+      ("human_bsuit", cap 512, 0, false, true);
     ]
 
 let main_cmdline () =
