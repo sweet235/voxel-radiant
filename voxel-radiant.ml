@@ -57,6 +57,7 @@ let cfg_ceiling_tex = ref @@ Texture ("shared_tech/floortile1a", (0.125, 0.125),
 let cfg_cell_dim = ref (256, 256, 256)
 let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
+let cfg_glass_tex = ref @@ Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
 let cfg_lamp_step = ref 1
 let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
 let cfg_lamp_width = ref 64
@@ -352,7 +353,7 @@ let set_vertical_cells : ascii_art -> unit
       loop 1 in
     match ascii_get ascii (row, col, ply) with
     | Some c when List.mem c !cfg_extend_to_sky -> set_above '+' max_int
-    | Some 'a' | Some 'o' -> set_above 'g' 128
+    | Some 'a' | Some 'o' | Some 'r' -> set_above 'g' 128
     | Some c when needs_128 c -> set_above '+' 128
     | _ -> () in
   ascii_iter f ascii
@@ -373,7 +374,6 @@ let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
 let nobuild = Texture ("common/nobuild", (1.0, 1.0), (0, 0), 0.0)
 let trigger = Texture ("common/trigger", (1.0, 1.0), (0, 0), 0.0)
 let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0), 0.0)
-let glass = Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
 
 let rec map_acc : ('a -> 'b list -> 'b list) -> 'a list -> 'b list -> 'b list
   = fun f ls acc -> match ls with
@@ -420,7 +420,7 @@ let wall_has_ladder : ascii_art -> int vec3 -> int vec3 -> bool
   = fun ascii_art ((row, col, ply) as pos) forward ->
   let (_, _, lim_z) = array3_dim ascii_art in
   let is_walkable v = match ascii_get ascii_art v with
-  | None | Some ' ' | Some '_' | Some 'g' | Some 'o' | Some 'a' -> false
+  | None | Some ' ' | Some '_' | Some 'g' | Some 'o' | Some 'r' | Some 'a' -> false
   | _ -> true in
   let rec needs_ladder_up i =
     if ply + i >= lim_z then false
@@ -468,7 +468,7 @@ let create_double_floor
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
   assert (dim_x = dim_y);
   let glass_brush = create_cuboid (!cfg_double_floor_width, !cfg_double_floor_width, 8)
-                      caulk caulk caulk caulk glass caulk true
+                      caulk caulk caulk caulk !cfg_glass_tex caulk true
                     |> translate_brush (0, 0, -dim_z / 2 - 4) in
   let strip_width = (dim_x - !cfg_double_floor_width) / 2 in
   let side_one = create_cuboid (strip_width, dim_x - strip_width, !cfg_double_floor_depth)
@@ -484,7 +484,7 @@ let create_glass_walls
   assert (dim_x = dim_y);
   let thickness = 4 in
   let side_one = create_cuboid (dim_x, thickness, dim_z)
-                   caulk caulk glass caulk caulk caulk false
+                   caulk caulk !cfg_glass_tex caulk caulk caulk false
                  |> translate_brush (0, dim_y / 2 - thickness / 2, 0) in
   List.map (fun m -> rotate_brush m side_one) rotations
 
@@ -511,7 +511,7 @@ let create_cell : ascii_art -> int vec3 -> brush list
   let wt = !cfg_wall_thickness in
 
   let result = match ascii_get ascii_art pos with
-    | Some 'a' | Some 'g' | Some 'o' -> create_glass_walls () @ result
+    | Some 'a' | Some 'g' | Some 'o' | Some 'r' -> create_glass_walls () @ result
     | Some '|' -> create_vent ident
     | Some '-' -> create_vent rotz90
     | Some '!' -> [create_nobuild ()]
@@ -733,7 +733,7 @@ let dispatch_on_char : ascii_art -> int vec3 -> building list
       Building ((192 + 32, 128 + 32, 0), "human_mgturret");
       Building ((192 + 32, 192 + 32, 0), "human_mgturret")
      ]
-  | 'R' ->
+  | 'R' | 'r' ->
      [Building ((dim_x / 2, dim_y / 2, 0), "human_reactor")]
   | 'A' when dim_x >= 256 && dim_y >= 256 ->
      [Building ((50, 128, 0), "human_armoury");
@@ -759,6 +759,11 @@ let dispatch_on_char : ascii_art -> int vec3 -> building list
      [Building ((dim_x / 2, dim_y / 2 - 32, 0), "human_mgturret");
       Building ((dim_x / 2, dim_y / 2 + 32, 0), "human_mgturret")
      ]
+  | 'G' ->
+     let bs = [Building ((0, -32, 0), "human_mgturret");
+               Building ((0, 32, 0), "human_mgturret")] in
+     let bs = rotate_buildings bs (List.nth rotations (Random.int 4)) in
+     translate_buildings bs (dim_x / 2, dim_y / 2, 0)
   | 'P' ->
      let bs = [Building ((0, -32, 0), "human_mgturret");
                Building ((0, 32, 0), "human_rocketpod")] in
@@ -993,6 +998,7 @@ let eat_option_lines : string list -> (string list, string) result
        loop lines
     | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
     | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
+    | "#glass_tex" :: rest -> let* () = parse_tex cfg_glass_tex rest in loop lines
     | ["#lamp_step"; n] -> let* () = parse_int cfg_lamp_step n in loop lines
     | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
     | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
