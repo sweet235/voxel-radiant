@@ -58,6 +58,7 @@ let cfg_cell_dim = ref (256, 256, 256)
 let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (0, 0), 0.0)
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
 let cfg_glass_tex = ref @@ Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
+let cfg_ladder_tex = ref @@ Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
 let cfg_lamp_step = ref 1
 let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
 let cfg_lamp_width = ref 64
@@ -370,7 +371,6 @@ let parse_input : string list -> ascii_art
  *)
 
 let caulk = Texture ("common/caulk", (1.0, 1.0), (0, 0), 0.0)
-let ladder = Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
 let nobuild = Texture ("common/nobuild", (1.0, 1.0), (0, 0), 0.0)
 let trigger = Texture ("common/trigger", (1.0, 1.0), (0, 0), 0.0)
 let playerclip = Texture ("common/playerclip", (1.0, 1.0), (0, 0), 0.0)
@@ -453,6 +453,7 @@ let create_ladder
                |> translate_brush ((!cfg_wall_thickness + thick) / 2, 0, h - dim_z / 2) in
       loop (h + !cfg_ladder_spacing) (br :: acc) in
   let result = loop (!cfg_ladder_spacing / 2) [] in
+  let ladder = !cfg_ladder_tex in
   let ladder_cuboid = create_cuboid (inv_thick, !cfg_ladder_width, dim_z)
                         ladder ladder ladder ladder ladder ladder true
                       |> translate_brush ((!cfg_wall_thickness + inv_thick) / 2, 0, 0) in
@@ -999,6 +1000,7 @@ let eat_option_lines : string list -> (string list, string) result
     | "#ceiling_tex" :: rest -> let* () = parse_tex cfg_ceiling_tex rest in loop lines
     | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
     | "#glass_tex" :: rest -> let* () = parse_tex cfg_glass_tex rest in loop lines
+    | "#ladder_tex" :: rest -> let* () = parse_tex cfg_ladder_tex rest in loop lines
     | ["#lamp_step"; n] -> let* () = parse_int cfg_lamp_step n in loop lines
     | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
     | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
