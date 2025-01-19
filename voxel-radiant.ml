@@ -240,11 +240,10 @@ let is_on_grid : ascii_art -> int vec3 -> bool
 
 let ascii_iter : (int vec3 -> unit) -> ascii_art -> unit
   = fun f arr ->
-  let (num_rows, num_cols, num_plies) = array3_dim arr in
   let iter () =
-    for ply = 0 to num_plies - 1 do
-      for row = 0 to num_rows - 1 do
-        for col = 0 to num_cols - 1 do
+    for ply = 0 to Array.length arr - 1 do
+      for row = 0 to Array.length arr.(ply) - 1 do
+        for col = 0 to Array.length arr.(ply).(row) - 1 do
           f (row, col, ply)
         done
       done
