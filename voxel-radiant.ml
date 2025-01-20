@@ -59,6 +59,7 @@ let cfg_floor_tex = ref @@ Texture ("shared_tech/floortile1c", (0.125, 0.125), (
 let cfg_lamp_tex = ref @@ Texture ("shared_trak5/light2_white_1500", (0.5, 0.5), (64, 64), 0.0)
 let cfg_glass_tex = ref @@ Texture ("shared_trak5/glass", (1.0, 1.0), (0, 0), 0.0)
 let cfg_ladder_tex = ref @@ Texture ("common/ladder", (1.0, 1.0), (0, 0), 0.0)
+let cfg_ladder_step_tex = ref @@ Texture ("shared_pk02/generic01b", (0.125, 0.125), (0, 0), 0.0)
 let cfg_lamp_step = ref 1
 let cfg_vent_lamp_tex = ref @@ !cfg_lamp_tex
 let cfg_lamp_width = ref 64
@@ -440,7 +441,7 @@ let invisible_ladder_thickness = 6
 let create_ladder
   = fun width ->
   let (_, _, dim_z) = !cfg_cell_dim in
-  let tex = Texture ("shared_pk02/generic01b", (0.125, 0.125), (0, 0), 0.0) in
+  let tex = !cfg_ladder_step_tex in
   let thick = ladder_thickness in
   let inv_thick = invisible_ladder_thickness in
   let prism_width = 32 in
@@ -1000,6 +1001,7 @@ let eat_option_lines : string list -> (string list, string) result
     | "#lamp_tex" :: rest -> let* () = parse_tex cfg_lamp_tex rest in loop lines
     | "#glass_tex" :: rest -> let* () = parse_tex cfg_glass_tex rest in loop lines
     | "#ladder_tex" :: rest -> let* () = parse_tex cfg_ladder_tex rest in loop lines
+    | "#ladder_step_tex" :: rest -> let* () = parse_tex cfg_ladder_step_tex rest in loop lines
     | ["#lamp_step"; n] -> let* () = parse_int cfg_lamp_step n in loop lines
     | "#vent_lamp_tex" :: rest -> let* () = parse_tex cfg_vent_lamp_tex rest in loop lines
     | "#vent_front_tex" :: rest -> let* () = parse_tex cfg_vent_front_tex rest in loop lines
