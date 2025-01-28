@@ -73,7 +73,7 @@ let cfg_vent_front_tex = ref @@ !cfg_wall_tex
 let cfg_ladders = ref true
 let cfg_ladder_width = ref 96
 let cfg_ladder_spacing = ref 32
-let cfg_ladder_step = ref 2
+let cfg_ladder_step = ref 1
 let cfg_single_sky = ref false
 let cfg_eggs_num = ref 3
 let cfg_eggs_dist = ref 60
@@ -88,6 +88,7 @@ let cfg_minlight = ref None
 let cfg_wall_sky = ref false
 let cfg_gravity : int vec2 option ref = ref None
 let cfg_gravity_clamp : int vec2 option ref = ref None
+let cfg_nobuild = ref ['!'; '-'; '|']
 
 let get_cfg_wall_tex : int -> texture
   = fun ply ->
@@ -502,7 +503,7 @@ let create_vent
 
 let create_nobuild () =
   let t = nobuild in
-  create_cuboid (!cfg_cell_dim +++ (40, 40, 0)) t t t t t t true
+  create_cuboid (!cfg_cell_dim) t t t t t t true
 
 let create_cell : ascii_art -> int vec3 -> brush list
   = fun ascii_art ((row, col, ply) as pos) ->
@@ -515,7 +516,10 @@ let create_cell : ascii_art -> int vec3 -> brush list
     | Some 'a' | Some 'g' | Some 'o' | Some 'r' -> create_glass_walls () @ result
     | Some '|' -> create_vent ident
     | Some '-' -> create_vent rotz90
-    | Some '!' -> [create_nobuild ()]
+    | _ -> result in
+
+  let result = match ascii_get ascii_art pos with
+    | Some c when List.mem c !cfg_nobuild -> (create_nobuild ()) :: result
     | _ -> result in
 
   (* floor if needed *)
@@ -1048,6 +1052,7 @@ let eat_option_lines : string list -> (string list, string) result
     | ["#wall_sky"] -> let () = cfg_wall_sky := true in loop lines
     | ["#single_sky"] -> let () = cfg_single_sky := true in loop lines
     | "#extend_to_sky" :: strs -> cfg_extend_to_sky := List.map (fun s -> s.[0]) strs; loop lines
+    | "#nobuild" :: strs -> cfg_nobuild := List.map (fun s -> s.[0]) strs; loop lines
     | "#no_navcon_top_humans" :: strs -> cfg_no_navcon_top_humans := List.map (fun s -> s.[0]) strs; loop lines
     | ["#ply"] -> loop lines
     | t :: _ when string_starts_with t "##" -> loop lines
