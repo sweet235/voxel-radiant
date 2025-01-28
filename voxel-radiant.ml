@@ -867,7 +867,7 @@ let cell_with_floor : ascii_art -> int vec3 -> int
 let write_navcons : ascii_art -> int -> int -> bool -> bool -> out_channel -> unit
   = fun arr down_max up_max pounces_up is_human stream ->
   let (dim_x, dim_y, dim_z) = !cfg_cell_dim in
-  let dist_margin = 10 in
+  let dist_margin = 16 in
   let dist_from_edge_bottom = !cfg_navcon_radius + dist_margin in
   let dist_from_edge_top = !cfg_navcon_radius + dist_margin in
   let exists pos = match ascii_get arr pos with
